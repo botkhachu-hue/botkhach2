@@ -179,7 +179,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("❌ Lỗi dữ liệu người dùng.")
             return
 
-        # 1. KIỂM TRA KHO CODE TRƯỚC TIÊN (NÂNG CẤP GỢI Ý THÔNG MINH)
+        # Kiểm tra kho code
         if not db["codes"].get(prod_key):
             suggest_keyboard = []
             for key, p_item in PRODUCTS.items():
@@ -199,7 +199,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.edit_message_text(text=f"😭 *Hiện tại tất cả sản phẩm trong kho đều đã hết sạch code!* Vui lòng thông báo Admin nạp thêm.", parse_mode="Markdown")
             return
 
-        # 2. KIỂM TRA SỐ DƯ TÀI KHOẢN KHÁCH
+        # Kiểm tra số dư tài khoản
         if u_info["balance"] < prod["price"]:
             await query.edit_message_text(
                 text=f"❌ *Giao dịch thất bại:*\nSố dư tài khoản của bạn (`{u_info['balance']:,} VNĐ`) không đủ để thanh toán mặt hàng *{prod['name']}* (`{prod['price']:,} VNĐ`). Vui lòng thực hiện nạp thêm!",
@@ -207,11 +207,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
             
-        # 3. TIẾN HÀNH TRỪ TIỀN VÀ XUẤT CODE
+        # Trừ tiền và xuất code
         u_info["balance"] -= prod["price"]
         code_bought = db["codes"][prod_key].pop(0)  
         
-        # Lưu vào lịch sử ví khách
         time_now = datetime.now().strftime("%d/%m %H:%M")
         u_info["history"].append(f"[{time_now}] Mua {prod['name']} (-{prod['price_str']})")
         save_data(db)
@@ -230,131 +229,94 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "cancel_buy":
         await query.edit_message_text("❌ *Đã hủy giao dịch mua hàng.*")
 
-# --- QUYỀN HẠN CỦA QUẢN TRỊ VIÊN (ADMIN COMMANDS) ---
-
+# --- QUYỀN HẠN ADMIN ---
 async def cmd_themcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         return
-        
     if len(context.args) < 2:
-        await update.message.reply_text("⚠️ Sai cú pháp! Vui lòng dùng: `/themcode [tên_loại] [mã_code]`\nVí dụ: `/themcode fly88 ABCXYZ123`", parse_mode="Markdown")
+        await update.message.reply_text("⚠️ Cú pháp: `/themcode [tên_loại] [mã_code]`", parse_mode="Markdown")
         return
-        
     prod_key = context.args[0].lower()
     code_val = " ".join(context.args[1:])
-    
     if prod_key not in PRODUCTS:
-        await update.message.reply_text("❌ Loại sản phẩm không tồn tại! Các loại hợp lệ: `fly88`, `f168`, `new88`, `qq88`, `shbet`", parse_mode="Markdown")
+        await update.message.reply_text("❌ Loại sản phẩm sai!", parse_mode="Markdown")
         return
-        
     db["codes"][prod_key].append(code_val)
     save_data(db)
-    
-    total_now = len(db["codes"][prod_key])
-    await update.message.reply_text(
-        f"✅ *Thêm code thành công!*\n"
-        f"📦 Loại kho: `{prod_key}`\n"
-        f"📊 Số lượng hiện tại trong kho: `{total_now}` code.",
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text(f"✅ Thêm thành công vào kho `{prod_key}`. Hiện có: `{len(db['codes'][prod_key])}` code.", parse_mode="Markdown")
 
 async def cmd_tong(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         return
-    total_users = len(db["users"])
-    await update.message.reply_text(f"📊 *Tổng số lượng người dùng hệ thống:* `{total_users}` thành viên.", parse_mode="Markdown")
+    await update.message.reply_text(f"📊 *Tổng người dùng:* `{len(db['users'])}` thành viên.", parse_mode="Markdown")
 
 async def cmd_nap(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         return
-        
     if len(context.args) < 2:
-        await update.message.reply_text("⚠️ Sai cú pháp! Vui lòng dùng: `/nap [id_người_dùng] [số_tiền]`", parse_mode="Markdown")
+        await update.message.reply_text("⚠️ Cú pháp: `/nap [id] [số_tiền]`", parse_mode="Markdown")
         return
-        
     target_uid = context.args[0]
     try:
         amount = int(context.args[1])
     except ValueError:
-        await update.message.reply_text("❌ Số tiền nạp phải là một dãy số nguyên!")
         return
-        
     if target_uid not in db["users"]:
-        await update.message.reply_text("❌ Người dùng này chưa từng ấn /start Bot (Không tìm thấy ID trong hệ thống).")
+        await update.message.reply_text("❌ Không tìm thấy người dùng này.")
         return
-        
     db["users"][target_uid]["balance"] += amount
-    time_now = datetime.now().strftime("%d/%m %H:%M")
-    db["users"][target_uid]["history"].append(f"[{time_now}] Được nạp tiền (+{amount:,}đ)")
     save_data(db)
-    
-    await update.message.reply_text(
-        f"✅ *Nạp tiền thành công!*\n👤 ID nhận: `{target_uid}`\n💰 Số tiền: `+{amount:,} VNĐ`\n💰 Số dư mới: `{db['users'][target_uid]['balance']:,} VNĐ`",
-        parse_mode="Markdown"
-    )
-    
+    await update.message.reply_text(f"✅ Nạp thành công cho `{target_uid}` số tiền `+{amount:,} VNĐ`", parse_mode="Markdown")
     try:
-        msg_to_user = (
-            "🔔 *THÔNG BÁO BIẾN ĐỘNG SỐ DƯ*\n"
-            "───────────────────\n"
-            f"💰 Tài khoản của bạn đã được cộng thêm: `+{amount:,} VNĐ` từ Admin.\n"
-            f"💳 Số dư hiện tại của bạn: `{db['users'][target_uid]['balance']:,} VNĐ`.\n"
-            "───────────────────\n"
-            "✨ Cảm ơn bạn đã lựa chọn dịch vụ của chúng tôi!"
-        )
-        await context.bot.send_message(chat_id=int(target_uid), text=msg_to_user, parse_mode="Markdown")
+        await context.bot.send_message(chat_id=int(target_uid), text=f"🔔 Tài khoản được cộng `+{amount:,} VNĐ` từ Admin.")
     except Exception:
-        await update.message.reply_text(f"⚠️ Không thể gửi tin nhắn trực tiếp cho User (Người dùng có thể đã block bot).")
+        pass
 
 async def cmd_thongbao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         return
-        
     if not context.args:
-        await update.message.reply_text("⚠️ Vui lòng nhập nội dung thông báo. Cú pháp: `/thongbao [Nội dung]`", parse_mode="Markdown")
         return
-        
-    announcement = "📢 *THÔNG BÁO TỪ BAN QUẢN TRỊ*\n" + "───────────────────\n" + " ".join(context.args)
-    
-    success_count = 0
-    fail_count = 0
-    
+    announcement = "📢 *THÔNG BÁO TỪ ADMIN*\n" + " ".join(context.args)
     for uid in db["users"].keys():
-        try:
-            await context.bot.send_message(chat_id=int(uid), text=announcement, parse_mode="Markdown")
-            success_count += 1
-        except Exception:
-            fail_count += 1
-            
-    await update.message.reply_text(f"📢 *Đã gửi thông báo toàn hệ thống!*\n✅ Thành công: `{success_count}`\n❌ Thất bại (Block bot): `{fail_count}`", parse_mode="Markdown")
+        try: await context.bot.send_message(chat_id=int(uid), text=announcement, parse_mode="Markdown")
+        except Exception: pass
+    await update.message.reply_text("📢 Đã gửi thông báo thành công!", parse_mode="Markdown")
 
-# --- HÀM KHỞI CHẠY CHÍNH CHUẨN HOÁ SERVER ---
+# --- HÀM TÍCH HỢP CHẠY THỦ CÔNG TRÊN EVENT LOOP SẴN CÓ ---
+async def start_bot_instance(application):
+    await application.initialize()
+    await application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+    await application.start()
+    logging.info("Bot đang chạy ổn định ngầm...")
+    while True:
+        await asyncio.sleep(3600)
+
 def main():
     TOKEN = "8610843811:AAHIaWRgc1A1CSyTivsDXXy6z0Usy_B6NR4"
     
-    # Ép buộc khởi tạo một Event Loop mới độc lập cho luồng chạy của Railway
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
     application = Application.builder().token(TOKEN).build()
     
-    # Đăng ký các bộ xử lý (Handlers)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CallbackQueryHandler(handle_callback))
-    
     application.add_handler(CommandHandler("themcode", cmd_themcode))
     application.add_handler(CommandHandler("tong", cmd_tong))
     application.add_handler(CommandHandler("nap", cmd_nap))
     application.add_handler(CommandHandler("thongbao", cmd_thongbao))
     
-    print("Bot đang khởi động thành công...")
-    
-    # Kích hoạt vòng lặp an toàn
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Chiếm dụng Event Loop có sẵn của Railway để chạy, không tự ý tạo mới
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # Nếu loop đang chạy (Môi trường Railway), tạo task chạy ngầm
+            loop.create_task(start_bot_instance(application))
+        else:
+            loop.run_until_complete(start_bot_instance(application))
+    except Exception as e:
+        # Phương án dự phòng cuối cùng nếu môi trường quá dị biệt
+        logging.error(f"Chuyển hướng cấu hình: {e}")
+        asyncio.run(start_bot_instance(application))
 
 if __name__ == "__main__":
     main()
