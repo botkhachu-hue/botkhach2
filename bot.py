@@ -1,47 +1,346 @@
-#!/usr/bin/env python3
-"""
-Telegram Bot using python-telegram-bot library
-"""
+import logging
+import json
+import os
+import threading
+from datetime import datetime
+from dotenv import load_dotenv
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, CallbackQueryHandler, filters
 
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+# Tải cấu hình từ file .env nếu có (khi chạy ở máy cục bộ)
+load_dotenv()
 
+# Cấu hình log
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send a message when the command /start is issued."""
-    await update.message.reply_text("Hello! I'm a bot. How can I help you?")
+# File lưu trữ dữ liệu
+DATA_FILE = "bot_data.json"
+db_lock = threading.Lock() # Khóa bảo vệ file dữ liệu khi ghi đa luồng
 
+# Danh sách ID Admin (Có thể sửa trực tiếp hoặc thêm qua biến môi trường)
+ADMIN_IDS = [8789260361, 8619503816]
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send a message when the command /help is issued."""
-    help_text = """
-    Available commands:
-    /start - Start the bot
-    /help - Show this help message
-    """
-    await update.message.reply_text(help_text)
+# Cấu hình sản phẩm
+PRODUCTS = {
+    "fly88": {"name": "Fly88 (79 điểm)", "price": 25000, "price_str": "25K"},
+    "f168": {"name": "F168 (188 điểm)", "price": 79000, "price_str": "79K"},
+    "new88": {"name": "New88 (188 điểm)", "price": 79000, "price_str": "79K"},
+    "qq88": {"name": "QQ88 (108 điểm)", "price": 40000, "price_str": "40K"},
+    "shbet": {"name": "Shbet (139 điểm)", "price": 50000, "price_str": "50K"}
+}
 
+# Khởi tạo dữ liệu mặc định
+def load_data():
+    with db_lock:
+        if os.path.exists(DATA_FILE):
+            try:
+                with open(DATA_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except json.JSONDecodeError:
+                logging.error("File dữ liệu bị lỗi định dạng, đang khởi tạo lại!")
+        return {
+            "users": {},
+            "codes": {key: [] for key in PRODUCTS.keys()}
+        }
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle regular messages."""
-    await update.message.reply_text(f"You said: {update.message.text}")
+def save_data(data_to_save):
+    with db_lock:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data_to_save, f, ensure_ascii=False, indent=4)
 
+db = load_data()
 
-def main() -> None:
-    """Start the bot."""
-    # Create the Application
-    application = Application.builder().token("YOUR_BOT_TOKEN_HERE").build()
+# Hàm kiểm tra và tạo user mới nếu chưa có
+def init_user(user_id, username, first_name):
+    uid = str(user_id)
+    if uid not in db["users"]:
+        db["users"][uid] = {
+            "username": username or "Không có",
+            "name": first_name or "Người dùng",
+            "balance": 0,
+            "join_date": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+            "history": []
+        }
+        save_data(db)
 
-    # on different commands - answer in Telegram
+# --- MENU CHÍNH ---
+def main_menu_keyboard():
+    keyboard = [
+        ["💳 NẠP TIỀN", "👤 TÀI KHOẢN"],
+        ["🛒 MUA HÀNG", "📜 LỊCH SỬ"],
+        ["📈 SỐ LƯỢNG CODE"]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    init_user(user.id, user.username, user.first_name)
+    
+    welcome_text = (
+        f"👑 *Chào mừng {user.first_name} đã đến với Hệ Thống Code Uy Tín!*\n\n"
+        "✨ Vui lòng chọn các tính năng bên dưới menu để bắt đầu giao dịch."
+    )
+    await update.message.reply_text(welcome_text, parse_mode="Markdown", reply_markup=main_menu_keyboard())
+
+# --- XỬ LÝ DI CHUYỂN MENU CHÍNH ---
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    user_id = update.effective_user.id
+    uid = str(user_id)
+    init_user(user_id, update.effective_user.username, update.effective_user.first_name)
+
+    if text == "💳 NẠP TIỀN":
+        msg = (
+            "🏦 *HỆ THỐNG NẠP TIỀN TỰ ĐỘNG*\n"
+            "───────────────────\n"
+            "📌 *Ngân hàng:* VPBANK\n"
+            "📌 *Số tài khoản:* `95533356868`\n"
+            "📌 *Chủ tài khoản:* LE TUAN BAO\n"
+            f"📌 *Nội dung chuyển khoản:* `{user_id}`\n"
+            "───────────────────\n"
+            "⚠️ *Lưu ý:* Vui lòng nhập đúng ID tài khoản trong nội dung chuyển khoản để hệ thống cộng tiền chính xác."
+        )
+        await update.message.reply_text(msg, parse_mode="Markdown")
+
+    elif text == "👤 TÀI KHOẢN":
+        u_info = db["users"][uid]
+        msg = (
+            "👑 *THÔNG TIN TÀI KHOẢN* 👑\n"
+            "───────────────────\n"
+            f"🆔 *ID cá nhân:* `{user_id}`\n"
+            f"👤 *Tên hiển thị:* {u_info['name']}\n"
+            f"💰 *Số dư hiện tại:* `{u_info['balance']:,} VNĐ`\n"
+            f"⏳ *Ngày tham gia:* {u_info['join_date']}\n"
+            "───────────────────\n"
+            "✨ *Uy tín tạo nên thương hiệu!*"
+        )
+        await update.message.reply_text(msg, parse_mode="Markdown")
+
+    elif text == "🛒 MUA HÀNG":
+        keyboard = []
+        for key, prod in PRODUCTS.items():
+            count = len(db["codes"].get(key, []))
+            keyboard.append([InlineKeyboardButton(f"🎁 {prod['name']} - {prod['price_str']} (Còn: {count})", callback_data=f"prod_{key}")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("🛒 *DANH SÁCH CODE ĐANG CÓ SẴN:*", parse_mode="Markdown", reply_markup=reply_markup)
+
+    elif text == "📜 LỊCH SỬ":
+        history = db["users"][uid].get("history", [])
+        if not history:
+            await update.message.reply_text("❌ Bạn chưa có lịch sử giao dịch nào.")
+            return
+        
+        msg = "📜 *LỊCH SỬ GIAO DỊCH GẦN ĐÂY*\n"
+        msg += "───────────────────\n"
+        for item in history[-10:]: # Lấy tối đa 10 giao dịch gần nhất
+            msg += f"▪️ {item}\n"
+        await update.message.reply_text(msg, parse_mode="Markdown")
+
+    elif text == "📈 SỐ LƯỢNG CODE":
+        msg = "📊 *THỐNG KÊ KHO CODE HIỆN TẠI*\n"
+        msg += "───────────────────\n"
+        for key, prod in PRODUCTS.items():
+            count = len(db["codes"].get(key, []))
+            msg += f"🎁 *{prod['name']}:* Còn `{count}` code\n"
+        msg += "───────────────────"
+        await update.message.reply_text(msg, parse_mode="Markdown")
+
+# --- XỬ LÝ MUA HÀNG (CALLBACK QUERY) ---
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    uid = str(user_id)
+    data = query.data
+
+    if data.startswith("prod_"):
+        prod_key = data.split("_")[1]
+        prod = PRODUCTS[prod_key]
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Xác Nhận Mua", callback_data=f"confirm_{prod_key}"),
+                InlineKeyboardButton("❌ Hủy Bỏ", callback_data="cancel_buy")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            text=f"❓ *Xác nhận mua:* {prod['name']}\n💰 *Giá tiền:* `{prod['price_str']}` ({prod['price']:,} VNĐ)?",
+            parse_mode="Markdown",
+            reply_markup=reply_markup
+        )
+        
+    elif data.startswith("confirm_"):
+        prod_key = data.split("_")[1]
+        prod = PRODUCTS[prod_key]
+        u_info = db["users"].get(uid)
+        
+        if not u_info:
+            await query.edit_message_text("❌ Lỗi dữ liệu người dùng.")
+            return
+
+        # Kiểm tra số dư
+        if u_info["balance"] < prod["price"]:
+            await query.edit_message_text("❌ *Giao dịch thất bại:* Số dư tài khoản không đủ để thực hiện mua sản phẩm này!")
+            return
+            
+        # Kiểm tra kho code
+        if not db["codes"].get(prod_key):
+            await query.edit_message_text("❌ *Giao dịch thất bại:* Sản phẩm này hiện tại đã hết code, vui lòng quay lại sau!")
+            return
+            
+        # Thực hiện mua
+        u_info["balance"] -= prod["price"]
+        code_bought = db["codes"][prod_key].pop(0) # Lấy ra mã code đầu tiên
+        
+        # Lưu lịch sử
+        time_now = datetime.now().strftime("%d/%m %H:%M")
+        u_info["history"].append(f"[{time_now}] Mua {prod['name']} (-{prod['price_str']})")
+        save_data(db)
+        
+        success_msg = (
+            "🎉 *MUA HÀNG THÀNH CÔNG!* 🎉\n"
+            "───────────────────\n"
+            f"📦 *Sản phẩm:* {prod['name']}\n"
+            f"🔑 *Mã Code của bạn:* `{code_bought}`\n"
+            f"💰 *Sấm dư còn lại:* `{u_info['balance']:,} VNĐ`\n"
+            "───────────────────\n"
+            "✨ Cảm ơn bạn đã tin tưởng dịch vụ của chúng tôi!"
+        )
+        await query.edit_message_text(text=success_msg, parse_mode="Markdown")
+        
+    elif data == "cancel_buy":
+        await query.edit_message_text("❌ *Đã hủy giao dịch mua hàng.*")
+
+# --- LỆNH CHO ADMIN ---
+
+async def cmd_themcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+        
+    if len(context.args) < 2:
+        await update.message.reply_text("⚠️ Sai cú pháp! Vui lòng dùng: `/themcode [tên_loại] [mã_code]`\nVí dụ: `/themcode fly88 ABCXYZ123`", parse_mode="Markdown")
+        return
+        
+    prod_key = context.args[0].lower()
+    code_val = " ".join(context.args[1:])
+    
+    if prod_key not in PRODUCTS:
+        await update.message.reply_text("❌ Loại sản phẩm không tồn tại! Các loại hợp lệ: `fly88`, `f168`, `new88`, `qq88`, `shbet`", parse_mode="Markdown")
+        return
+        
+    db["codes"][prod_key].append(code_val)
+    save_data(db)
+    
+    total_now = len(db["codes"][prod_key])
+    await update.message.reply_text(
+        f"✅ *Thêm code thành công!*\n"
+        f"📦 Loại: `{prod_key}`\n"
+        f"📊 Số lượng còn lại trong kho: `{total_now}` code.",
+        parse_mode="Markdown"
+    )
+
+async def cmd_tong(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    total_users = len(db["users"])
+    await update.message.reply_text(f"📊 *Tổng số lượng người dùng hệ thống:* `{total_users}` thành viên.", parse_mode="Markdown")
+
+async def cmd_nap(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+        
+    if len(context.args) < 2:
+        await update.message.reply_text("⚠️ Sai cú pháp! Vui lòng dùng: `/nap [id_người_dùng] [số_tiền]`", parse_mode="Markdown")
+        return
+        
+    target_uid = context.args[0]
+    try:
+        amount = int(context.args[1])
+    except ValueError:
+        await update.message.reply_text("❌ Số tiền nạp phải là số nguyên!")
+        return
+        
+    if target_uid not in db["users"]:
+        await update.message.reply_text("❌ Người dùng này chưa từng tương tác với Bot (Không tìm thấy ID trong hệ thống).")
+        return
+        
+    db["users"][target_uid]["balance"] += amount
+    time_now = datetime.now().strftime("%d/%m %H:%M")
+    db["users"][target_uid]["history"].append(f"[{time_now}] Được nạp tiền (+{amount:,}đ)")
+    save_data(db)
+    
+    await update.message.reply_text(
+        f"✅ *Nạp tiền thành công!*\n👤 ID nhận: `{target_uid}`\n💰 Số tiền: `+{amount:,} VNĐ`\n💰 Số dư mới: `{db['users'][target_uid]['balance']:,} VNĐ`",
+        parse_mode="Markdown"
+    )
+    
+    try:
+        msg_to_user = (
+            "🔔 *THÔNG BÁO BIẾN ĐỘNG SỐ DƯ*\n"
+            "───────────────────\n"
+            f"💰 Tài khoản của bạn đã được cộng: `+{amount:,} VNĐ` từ Admin.\n"
+            f"💳 Số dư hiện tại: `{db['users'][target_uid]['balance']:,} VNĐ`.\n"
+            "───────────────────\n"
+            "✨ Cảm ơn bạn đã lựa chọn dịch vụ của chúng tôi!"
+        )
+        await context.bot.send_message(chat_id=int(target_uid), text=msg_to_user, parse_mode="Markdown")
+    except Exception:
+        await update.message.reply_text(f"⚠️ Không thể gửi thông báo trực tiếp cho User (Có thể user đã chặn bot).")
+
+async def cmd_thongbao(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+        
+    if not context.args:
+        await update.message.reply_text("⚠️ Vui lòng nhập nội dung thông báo. Cú pháp: `/thongbao [Nội dung]`", parse_mode="Markdown")
+        return
+        
+    announcement = "📢 *THÔNG BÁO TỪ BAN QUẢN TRỊ*\n" + "───────────────────\n" + " ".join(context.args)
+    
+    success_count = 0
+    fail_count = 0
+    
+    for uid in db["users"].keys():
+        try:
+            await context.bot.send_message(chat_id=int(uid), text=announcement, parse_mode="Markdown")
+            success_count += 1
+        except Exception:
+            fail_count += 1
+            
+    await update.message.reply_text(f"📢 *Đã gửi thông báo toàn hệ thống!*\n✅ Thành công: `{success_count}`\n❌ Thất bại: `{fail_count}`", parse_mode="Markdown")
+
+# --- MAIN ---
+def main():
+    # Lấy Token bảo mật từ biến môi trường "TELEGRAM_TOKEN"
+    TOKEN = os.getenv("TELEGRAM_TOKEN")
+    
+    if not TOKEN:
+        # Nếu chạy ở máy tính cá nhân chưa cấu hình biến môi trường, hãy dán tạm token của bạn vào dấu hỏi chấm dưới đây
+        TOKEN = "THAY_TOKEN_CỦA_BẠN_VÀO_ĐÂY"
+        
+    if TOKEN == "THAY_TOKEN_CỦA_BẠN_VÀO_ĐÂY":
+        print("❌ LỖI: Bạn chưa cấu hình TELEGRAM_TOKEN trong biến môi trường hoặc file .env!")
+        return
+        
+    application = Application.builder().token(TOKEN).build()
+    
+    # Handlers mặc định
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-
-    # on non command i.e message - echo the message on Telegram
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    # Run the bot until the user presses Ctrl-C
+    application.add_handler(CallbackQueryHandler(handle_callback))
+    
+    # Handlers Admin
+    application.add_handler(CommandHandler("themcode", cmd_themcode))
+    application.add_handler(CommandHandler("tong", cmd_tong))
+    application.add_handler(CommandHandler("nap", cmd_nap))
+    application.add_handler(CommandHandler("thongbao", cmd_thongbao))
+    
+    print("Bot đang chạy...")
     application.run_polling()
-
 
 if __name__ == "__main__":
     main()
