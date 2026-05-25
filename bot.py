@@ -193,7 +193,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if suggest_keyboard:
                 await query.edit_message_text(text=error_msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(suggest_keyboard))
             else:
-                await query.edit_message_text(text=f"😭 *Hiện tại tất cả sản phẩm trong kho đều đã hết sạch code!* Vui lòng thông báo Admin nạp thêm.", parse_mode="Markdown")
+                await query.edit_message_text(text=f"❌ *Hệ thống không còn code, vui lòng liên hệ Admin để nạp thêm.*", parse_mode="Markdown")
             return
 
         # Kiểm tra số dư tài khoản
@@ -288,13 +288,13 @@ async def cmd_thongbao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"📢 Đã gửi thông báo đến {count}/{len(db['users'])} người dùng!", parse_mode="Markdown")
 
 # --- HÀM CHẠY BOT CHÍNH ---
-async def main():
+def main():
     TOKEN = "8610843811:AAHIaWRgc1A1CSyTivsDXXy6z0Usy_B6NR4"
     
-    # Tạo application
+    # Khởi tạo application đúng cách
     application = Application.builder().token(TOKEN).build()
     
-    # Thêm handlers
+    # Thêm các handlers xử lý
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CallbackQueryHandler(handle_callback))
@@ -303,22 +303,16 @@ async def main():
     application.add_handler(CommandHandler("nap", cmd_nap))
     application.add_handler(CommandHandler("thongbao", cmd_thongbao))
     
-    # Khởi động bot
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling()
+    logging.info("Bot đang khởi động bằng run_polling()...")
     
-    logging.info("Bot đang chạy...")
-    
-    # Giữ bot chạy liên tục
-    stop_signal = asyncio.Event()
-    await stop_signal.wait()
+    # Sử dụng hàm chuẩn run_polling để tự động quản lý vòng lặp sự kiện, tránh lỗi dọn dẹp cache trên server
+    application.run_polling()
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        main()
     except KeyboardInterrupt:
         logging.info("Bot đã dừng.")
     except Exception as e:
-        logging.error(f"Lỗi: {e}")
+        logging.error(f"Lỗi nghiêm trọng hệ thống: {e}")
         sys.exit(1)
