@@ -1,18 +1,17 @@
 import logging
 import json
 import os
-import threading
 import asyncio
 from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, CallbackQueryHandler, filters
+import sys
 
 # Cấu hình log hệ thống
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # File lưu trữ dữ liệu
 DATA_FILE = "bot_data.json"
-db_lock = threading.Lock()  # Khóa bảo vệ file tránh lỗi ghi trùng lặp dữ liệu (Đa luồng)
 
 # Danh sách ID Admin của bạn
 ADMIN_IDS = [8789260361, 8619503816]
@@ -28,22 +27,20 @@ PRODUCTS = {
 
 # Khởi tạo hoặc đọc dữ liệu từ file JSON
 def load_data():
-    with db_lock:
-        if os.path.exists(DATA_FILE):
-            try:
-                with open(DATA_FILE, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except json.JSONDecodeError:
-                logging.error("File dữ liệu bị lỗi định dạng, đang khởi tạo lại!")
-        return {
-            "users": {},
-            "codes": {key: [] for key in PRODUCTS.keys()}
-        }
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            logging.error("File dữ liệu bị lỗi định dạng, đang khởi tạo lại!")
+    return {
+        "users": {},
+        "codes": {key: [] for key in PRODUCTS.keys()}
+    }
 
 def save_data(data_to_save):
-    with db_lock:
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(data_to_save, f, ensure_ascii=False, indent=4)
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data_to_save, f, ensure_ascii=False, indent=4)
 
 db = load_data()
 
@@ -239,7 +236,7 @@ async def cmd_themcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prod_key = context.args[0].lower()
     code_val = " ".join(context.args[1:])
     if prod_key not in PRODUCTS:
-        await update.message.reply_text("❌ Loại sản phẩm sai!", parse_mode="Markdown")
+        await update.message.reply_text("❌ Loại sản phẩm sai! Các loại: fly88, f168, new88, qq88, shbet", parse_mode="Markdown")
         return
     db["codes"][prod_key].append(code_val)
     save_data(db)
@@ -260,6 +257,7 @@ async def cmd_nap(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         amount = int(context.args[1])
     except ValueError:
+        await update.message.reply_text("❌ Số tiền không hợp lệ!")
         return
     if target_uid not in db["users"]:
         await update.message.reply_text("❌ Không tìm thấy người dùng này.")
@@ -268,7 +266,7 @@ async def cmd_nap(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_data(db)
     await update.message.reply_text(f"✅ Nạp thành công cho `{target_uid}` số tiền `+{amount:,} VNĐ`", parse_mode="Markdown")
     try:
-        await context.bot.send_message(chat_id=int(target_uid), text=f"🔔 Tài khoản được cộng `+{amount:,} VNĐ` từ Admin.")
+        await context.bot.send_message(chat_id=int(target_uid), text=f"🔔 Tài khoản được cộng `+{amount:,} VNĐ` từ Admin.", parse_mode="Markdown")
     except Exception:
         pass
 
@@ -276,27 +274,27 @@ async def cmd_thongbao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         return
     if not context.args:
+        await update.message.reply_text("⚠️ Cú pháp: `/thongbao [nội dung]`", parse_mode="Markdown")
         return
     announcement = "📢 *THÔNG BÁO TỪ ADMIN*\n" + " ".join(context.args)
+    count = 0
     for uid in db["users"].keys():
-        try: await context.bot.send_message(chat_id=int(uid), text=announcement, parse_mode="Markdown")
-        except Exception: pass
-    await update.message.reply_text("📢 Đã gửi thông báo thành công!", parse_mode="Markdown")
+        try:
+            await context.bot.send_message(chat_id=int(uid), text=announcement, parse_mode="Markdown")
+            count += 1
+            await asyncio.sleep(0.05)  # Tránh rate limit
+        except Exception:
+            pass
+    await update.message.reply_text(f"📢 Đã gửi thông báo đến {count}/{len(db['users'])} người dùng!", parse_mode="Markdown")
 
-# --- HÀM TÍCH HỢP CHẠY THỦ CÔNG TRÊN EVENT LOOP SẴN CÓ ---
-async def start_bot_instance(application):
-    await application.initialize()
-    await application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
-    await application.start()
-    logging.info("Bot đang chạy ổn định ngầm...")
-    while True:
-        await asyncio.sleep(3600)
-
-def main():
+# --- HÀM CHẠY BOT CHÍNH ---
+async def main():
     TOKEN = "8610843811:AAHIaWRgc1A1CSyTivsDXXy6z0Usy_B6NR4"
     
+    # Tạo application
     application = Application.builder().token(TOKEN).build()
     
+    # Thêm handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CallbackQueryHandler(handle_callback))
@@ -305,18 +303,22 @@ def main():
     application.add_handler(CommandHandler("nap", cmd_nap))
     application.add_handler(CommandHandler("thongbao", cmd_thongbao))
     
-    # Chiếm dụng Event Loop có sẵn của Railway để chạy, không tự ý tạo mới
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # Nếu loop đang chạy (Môi trường Railway), tạo task chạy ngầm
-            loop.create_task(start_bot_instance(application))
-        else:
-            loop.run_until_complete(start_bot_instance(application))
-    except Exception as e:
-        # Phương án dự phòng cuối cùng nếu môi trường quá dị biệt
-        logging.error(f"Chuyển hướng cấu hình: {e}")
-        asyncio.run(start_bot_instance(application))
+    # Khởi động bot
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+    
+    logging.info("Bot đang chạy...")
+    
+    # Giữ bot chạy liên tục
+    stop_signal = asyncio.Event()
+    await stop_signal.wait()
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logging.info("Bot đã dừng.")
+    except Exception as e:
+        logging.error(f"Lỗi: {e}")
+        sys.exit(1)
