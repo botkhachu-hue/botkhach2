@@ -2,6 +2,7 @@ import logging
 import json
 import os
 import threading
+import asyncio
 from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, CallbackQueryHandler, filters
@@ -180,11 +181,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 1. KIỂM TRA KHO CODE TRƯỚC TIÊN (NÂNG CẤP GỢI Ý THÔNG MINH)
         if not db["codes"].get(prod_key):
-            # Tự động quét tìm các sản phẩm khác xem cái nào còn hàng để giới thiệu
             suggest_keyboard = []
             for key, p_item in PRODUCTS.items():
                 p_count = len(db["codes"].get(key, []))
-                if p_count > 0:  # Chỉ hiển thị các sản phẩm đang có sẵn code
+                if p_count > 0:  
                     suggest_keyboard.append([InlineKeyboardButton(f"🎁 {p_item['name']} (Còn: {p_count})", callback_data=f"prod_{key}")])
             
             error_msg = (
@@ -209,7 +209,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         # 3. TIẾN HÀNH TRỪ TIỀN VÀ XUẤT CODE
         u_info["balance"] -= prod["price"]
-        code_bought = db["codes"][prod_key].pop(0)  # Lấy mã code đầu tiên xếp trong hàng đợi
+        code_bought = db["codes"][prod_key].pop(0)  
         
         # Lưu vào lịch sử ví khách
         time_now = datetime.now().strftime("%d/%m %H:%M")
@@ -328,20 +328,17 @@ async def cmd_thongbao(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
     await update.message.reply_text(f"📢 *Đã gửi thông báo toàn hệ thống!*\n✅ Thành công: `{success_count}`\n❌ Thất bại (Block bot): `{fail_count}`", parse_mode="Markdown")
 
-# --- HÀM KHỞI CHẠY CHÍNH ---
+# --- HÀM KHỞI CHẠY CHÍNH CHUẨN HOÁ CHỐNG CRASH ---
 def main():
-    # Token chính thức của bạn
     TOKEN = "8610843811:AAHIaWRgc1A1CSyTivsDXXy6z0Usy_B6NR4"
     
-    # Khởi tạo Application chuẩn hóa chống crash trên tất cả phiên bản python-telegram-bot
     application = Application.builder().token(TOKEN).build()
     
-    # Handlers mặc định cho Khách
+    # Đăng ký các bộ xử lý (Handlers)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CallbackQueryHandler(handle_callback))
     
-    # Handlers cho Admin hệ thống
     application.add_handler(CommandHandler("themcode", cmd_themcode))
     application.add_handler(CommandHandler("tong", cmd_tong))
     application.add_handler(CommandHandler("nap", cmd_nap))
@@ -349,11 +346,11 @@ def main():
     
     print("Bot đang khởi động thành công...")
     
-    # Cơ chế chạy không chặn (Chống lỗi Updater trên môi trường Python 3.13 / v21)
+    # Cơ chế kích hoạt vòng lặp an toàn đa nền tảng
     try:
-        application.run_polling(close_loop=False)
-    except TypeError:
-        application.run_polling()
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+    except Exception as e:
+        logging.error(f"Lỗi khởi chạy chính: {e}")
 
 if __name__ == "__main__":
     main()
