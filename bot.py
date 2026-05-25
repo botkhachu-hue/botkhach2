@@ -82,7 +82,7 @@ def main_menu_keyboard():
     keyboard = [
         ["💳 NẠP TIỀN", "👤 TÀI KHOẢN"],
         ["🛒 MUA HÀNG", "📜 LỊCH SỬ"],
-        ["📈 SỐ LƯỢNG CODE"]
+        ["📈 SỐ LƯỢNG CODE", "☎️ HỖ TRỢ"]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -142,14 +142,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif text == "🛒 MUA HÀNG":
         keyboard = []
+        
+        # Sắp xếp và làm đẹp lại menu nhìn hiện đại và có tổ chức cao hơn
+        msg_header = (
+            "🛒 *DANH SÁCH CODE SẴN HÀNG*\n"
+            "───────────────────────────\n"
+            "⚡️ *Hệ thống phân phối tự động 24/7*\n"
+            "👉 Vui lòng chọn loại Code bạn muốn mua bên dưới:"
+        )
+        
         for key, prod in PRODUCTS.items():
-            # Nếu đang bảo trì, bổ sung nhãn ĐANG BẢO TRÌ vào menu luôn
             is_mainten = db.get("maintenance", {}).get(key, False)
-            status_str = "⚠️ BẢO TRÌ" if is_mainten else f"Còn: {len(db['codes'].get(key, []))}"
-            keyboard.append([InlineKeyboardButton(f"🎁 {prod['name']} - {prod['price_str']} ({status_str})", callback_data=f"prod_{key}")])
+            
+            if is_mainten:
+                status_str = "⛔️ Bảo Trì"
+            else:
+                stock_count = len(db['codes'].get(key, []))
+                status_str = f"Còn: {stock_count}" if stock_count > 0 else "❌ Hết Hàng"
+                
+            # Thiết kế nút hiện đại: [Emoji gói] [Tên Gói] ─── [Giá] [Trạng Thái]
+            button_text = f"🎁 {prod['name']} ─── 💰 {prod['price_str']} ({status_str})"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=f"prod_{key}")])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("🛒 *DANH SÁCH CODE ĐANG CÓ SẴN:*", parse_mode="Markdown", reply_markup=reply_markup)
+        await update.message.reply_text(msg_header, parse_mode="Markdown", reply_markup=reply_markup)
 
     elif text == "📜 LỊCH SỬ":
         history = db["users"][uid].get("history", [])
@@ -173,6 +189,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg += f"🎁 *{prod['name']}:* Còn `{count}` code{status_str}\n"
         msg += "───────────────────"
         await update.message.reply_text(msg, parse_mode="Markdown")
+
+    elif text == "☎️ HỖ TRỢ":
+        support_msg = (
+            "☎️ *TRUNG TÂM CHĂM SÓC KHÁCH HÀNG*\n"
+            "───────────────────────────\n"
+            "👋 Chào bạn! Nếu gặp bất kỳ vấn đề gì liên quan tới lỗi nạp tiền, lỗi code hoặc cần khiếu nại hệ thống.\n\n"
+            "👉 Vui lòng nhấn vào nút *Tham Gia Hỗ Trợ* phía dưới để nhắn tin trực tiếp với bộ phận CSKH của chúng tôi."
+        )
+        keyboard = [
+            [InlineKeyboardButton("💬 Tham Gia Hỗ Trợ", url="https://t.me/cskhcodeminilive")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(support_msg, parse_mode="Markdown", reply_markup=reply_markup)
 
 # --- XỬ LÝ MUA HÀNG & CHECK KHO & BẢO TRÌ CALLBACK ---
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -535,8 +564,8 @@ async def cmd_thongbao(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- HÀM CHẠY BOT CHÍNH ---
 def main():
-    # Điền token bot telegram của bạn tại đây
-    TOKEN = "8610843811:AAHIaWRgc1A1CSyTivsDXXy6z0Usy_B6NR4"
+    # Token bot telegram mới đã được cập nhật
+    TOKEN = "8960587351:AAEe0E5gUXYoZ_G864q4ek7Duu4S3foD07g"
     
     application = Application.builder().token(TOKEN).build()
     
