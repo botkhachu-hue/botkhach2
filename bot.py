@@ -84,17 +84,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     init_user(user_id, update.effective_user.username, update.effective_user.first_name)
 
     if text == "💳 NẠP TIỀN":
+        # Tạo link QR VietQR tự động theo ID người dùng (Nội dung ck là ID)
+        # Định dạng: https://img.vietqr.io/image/<BANK_ID>-<ACCOUNT_NO>-<TEMPLATE>.jpg?addInfo=<DESCRIPTION>
+        bank_id = "MB"
+        account_no = "0355101427"
+        template = "print"
+        qr_url = f"https://img.vietqr.io/image/{bank_id}-{account_no}-{template}.jpg?addInfo={user_id}"
+
         msg = (
             "🏦 *HỆ THỐNG NẠP TIỀN TỰ ĐỘNG*\n"
             "───────────────────\n"
-            "📌 *Ngân hàng:* MBBANK\n"
-            "📌 *Số tài khoản:* 0355101427`\n"
-            "📌 *Chủ tài khoản:* vo ngoc hai yen\n"
+            "📌 *Ngân hàng:* MBBANK (Ngân hàng Quân Đội)\n"
+            "📌 *Số tài khoản:* `0355101427`\n"
+            "📌 *Chủ tài khoản:* VO NGOC HAI YEN\n"
             f"📌 *Nội dung chuyển khoản:* `{user_id}`\n"
             "───────────────────\n"
-            "⚠️ *Lưu ý:* Vui lòng nhập đúng ID tài khoản trong nội dung chuyển khoản để hệ thống cộng tiền chính xác."
+            "📸 *Quét mã QR bên dưới để tự động điền thông tin!*\n"
+            "⚠️ *Lưu ý:* Vui lòng giữ nguyên nội dung chuyển khoản là **ID tài khoản** của bạn để hệ thống tự động xử lý chính xác."
         )
-        await update.message.reply_text(msg, parse_mode="Markdown")
+        # Gửi kèm ảnh QR cho người dùng
+        try:
+            await update.message.reply_photo(photo=qr_url, caption=msg, parse_mode="Markdown")
+        except Exception as e:
+            logging.error(f"Lỗi gửi QR: {e}")
+            await update.message.reply_text(msg, parse_mode="Markdown")
 
     elif text == "👤 TÀI KHOẢN":
         u_info = db["users"][uid]
@@ -242,6 +255,50 @@ async def cmd_themcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_data(db)
     await update.message.reply_text(f"✅ Thêm thành công vào kho `{prod_key}`. Hiện có: `{len(db['codes'][prod_key])}` code.", parse_mode="Markdown")
 
+# THÊM NHIỀU MÃ CODE CÙNG LÚC (XUỐNG DÒNG)
+async def cmd_themcodesll(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    
+    # Lấy toàn bộ nội dung text tin nhắn của admin
+    message_text = update.message.text
+    # Tách dòng
+    lines = [line.strip() for line in message_text.split('\n') if line.strip()]
+    
+    # Dòng đầu tiên chứa lệnh và tên game (Ví dụ: /themcodesll fly88)
+    first_line_parts = lines[0].split()
+    if len(first_line_parts) < 2:
+        await update.message.reply_text(
+            "⚠️ *Cú pháp sai!*\nVui lòng nhập theo định dạng:\n"
+            "`/themcodesll fly88`\n"
+            "`code_1`\n"
+            "`code_2`\n"
+            "`code_3`", 
+            parse_mode="Markdown"
+        )
+        return
+        
+    prod_key = first_line_parts[1].lower()
+    if prod_key not in PRODUCTS:
+        await update.message.reply_text("❌ Loại sản phẩm sai! Các loại: fly88, f168, new88, qq88, shbet", parse_mode="Markdown")
+        return
+        
+    # Các dòng tiếp theo chính là danh sách mã code
+    added_codes = lines[1:]
+    if not added_codes:
+        await update.message.reply_text("❌ Không tìm thấy danh sách mã code nào ở các dòng tiếp theo!", parse_mode="Markdown")
+        return
+        
+    # Append toàn bộ code vào cơ sở dữ liệu
+    db["codes"][prod_key].extend(added_codes)
+    save_data(db)
+    
+    await update.message.reply_text(
+        f"✅ Thêm thành công sll *{len(added_codes)}* code vào kho `{prod_key}`.\n"
+        f"📊 Hiện tại kho này có: `{len(db['codes'][prod_key])}` code.", 
+        parse_mode="Markdown"
+    )
+
 async def cmd_tong(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         return
@@ -294,18 +351,21 @@ def main():
     # Khởi tạo application đúng cách
     application = Application.builder().token(TOKEN).build()
     
-    # Thêm các handlers xử lý
+    # Thêm các handlers xử lý (Sắp xếp lại thứ tự ưu tiên các bộ lọc hợp lý)
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(CommandHandler("themcode", cmd_themcode))
+    application.add_handler(CommandHandler("themcodesll", cmd_themcodesll))
     application.add_handler(CommandHandler("tong", cmd_tong))
     application.add_handler(CommandHandler("nap", cmd_nap))
     application.add_handler(CommandHandler("thongbao", cmd_thongbao))
     
-    logging.info("Bot đang khởi động bằng run_polling()...")
+    # Bộ lọc Text xử lý Menu
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # Sử dụng hàm chuẩn run_polling để tự động quản lý vòng lặp sự kiện, tránh lỗi dọn dẹp cache trên server
+    # Bộ lọc nút bấm Callback
+    application.add_handler(CallbackQueryHandler(handle_callback))
+    
+    logging.info("Bot đang khởi động bằng run_polling()...")
     application.run_polling()
 
 if __name__ == "__main__":
