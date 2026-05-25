@@ -16,13 +16,13 @@ DATA_FILE = "bot_data.json"
 # Danh sách ID Admin của bạn
 ADMIN_IDS = [8643692536, 8619503816]
 
-# Cấu hình danh mục sản phẩm (Đã cập nhật giá 188K và 79K)
+# Cấu hình danh mục sản phẩm (Đã đồng bộ toàn bộ thành 188 điểm bán 79K)
 PRODUCTS = {
-    "fly88": {"name": "Fly88 (79 điểm)", "price": 79000, "price_str": "79K"},
-    "f168": {"name": "F168 (188 điểm)", "price": 188000, "price_str": "188K"},
-    "new88": {"name": "New88 (188 điểm)", "price": 188000, "price_str": "188K"},
-    "qq88": {"name": "QQ88 (108 điểm)", "price": 40000, "price_str": "40K"},
-    "shbet": {"name": "Shbet (139 điểm)", "price": 50000, "price_str": "50K"}
+    "fly88": {"name": "Fly88 (188 điểm)", "price": 79000, "price_str": "79K"},
+    "f168": {"name": "F168 (188 điểm)", "price": 79000, "price_str": "79K"},
+    "new88": {"name": "New88 (188 điểm)", "price": 79000, "price_str": "79K"},
+    "qq88": {"name": "QQ88 (188 điểm)", "price": 79000, "price_str": "79K"},
+    "shbet": {"name": "Shbet (188 điểm)", "price": 79000, "price_str": "79K"}
 }
 
 # Khởi tạo hoặc đọc dữ liệu từ file JSON
