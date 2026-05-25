@@ -87,9 +87,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = (
             "🏦 *HỆ THỐNG NẠP TIỀN TỰ ĐỘNG*\n"
             "───────────────────\n"
-            "📌 *Ngân hàng:* VPBANK\n"
-            "📌 *Số tài khoản:* `95533356868`\n"
-            "📌 *Chủ tài khoản:* LE TUAN BAO\n"
+            "📌 *Ngân hàng:* sacombank\n"
+            "📌 *Số tài khoản:* `050159559812`\n"
+            "📌 *Chủ tài khoản:* Ho huu chu\n"
             f"📌 *Nội dung chuyển khoản:* `{user_id}`\n"
             "───────────────────\n"
             "⚠️ *Lưu ý:* Vui lòng nhập đúng ID tài khoản trong nội dung chuyển khoản để hệ thống cộng tiền chính xác."
