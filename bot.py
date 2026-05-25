@@ -16,13 +16,22 @@ DATA_FILE = "bot_data.json"
 # Danh sách ID Admin của bạn
 ADMIN_IDS = [8643692536, 8619503816]
 
-# Cấu hình danh mục sản phẩm (Đã đồng bộ toàn bộ thành 188 điểm bán 79K)
+# Cấu hình danh mục sản phẩm (Đã thêm biến thể 588 điểm giá 220K)
 PRODUCTS = {
-    "fly88": {"name": "Fly88 (188 điểm)", "price": 79000, "price_str": "79K"},
-    "f168": {"name": "F168 (188 điểm)", "price": 79000, "price_str": "79K"},
-    "new88": {"name": "New88 (188 điểm)", "price": 79000, "price_str": "79K"},
-    "qq88": {"name": "QQ88 (188 điểm)", "price": 79000, "price_str": "79K"},
-    "shbet": {"name": "Shbet (188 điểm)", "price": 79000, "price_str": "79K"}
+    "fly88_188": {"game": "fly88", "name": "Fly88 (188 điểm)", "price": 79000, "price_str": "79K"},
+    "fly88_588": {"game": "fly88", "name": "Fly88 (588 điểm)", "price": 220000, "price_str": "220K"},
+    
+    "f168_188": {"game": "f168", "name": "F168 (188 điểm)", "price": 79000, "price_str": "79K"},
+    "f168_588": {"game": "f168", "name": "F168 (588 điểm)", "price": 220000, "price_str": "220K"},
+    
+    "new88_188": {"game": "new88", "name": "New88 (188 điểm)", "price": 79000, "price_str": "79K"},
+    "new88_588": {"game": "new88", "name": "New88 (588 điểm)", "price": 220000, "price_str": "220K"},
+    
+    "qq88_188": {"game": "qq88", "name": "QQ88 (188 điểm)", "price": 79000, "price_str": "79K"},
+    "qq88_588": {"game": "qq88", "name": "QQ88 (588 điểm)", "price": 220000, "price_str": "220K"},
+    
+    "shbet_188": {"game": "shbet", "name": "Shbet (188 điểm)", "price": 79000, "price_str": "79K"},
+    "shbet_588": {"game": "shbet", "name": "Shbet (588 điểm)", "price": 220000, "price_str": "220K"}
 }
 
 # Khởi tạo hoặc đọc dữ liệu từ file JSON
@@ -30,12 +39,23 @@ def load_data():
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                # Đồng bộ cấu trúc dữ liệu mới nếu nâng cấp từ bản cũ
+                if "maintenance" not in data:
+                    data["maintenance"] = {key: False for key in PRODUCTS.keys()}
+                for key in PRODUCTS.keys():
+                    if key not in data["codes"]:
+                        data["codes"][key] = []
+                    if key not in data["maintenance"]:
+                        data["maintenance"][key] = False
+                return data
         except json.JSONDecodeError:
             logging.error("File dữ liệu bị lỗi định dạng, đang khởi tạo lại!")
+            
     return {
         "users": {},
-        "codes": {key: [] for key in PRODUCTS.keys()}
+        "codes": {key: [] for key in PRODUCTS.keys()},
+        "maintenance": {key: False for key in PRODUCTS.keys()}
     }
 
 def save_data(data_to_save):
@@ -85,16 +105,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "💳 NẠP TIỀN":
         bank_id = "MB"
-        account_no = "0355101427"
+        account_no = "0003456712345"
         template = "print"
-        qr_url = f"https://img.vietqr.io/image/{bank_id}-{account_no}-{template}.jpg?addInfo={user_id}"
+        qr_url = f"https://img.vietqr.io/image/{bank_id}-{account_no}-{template}.jpg?addInfo={user_id}&accountName=LY%20THI%20CHAM"
 
         msg = (
             "🏦 *HỆ THỐNG NẠP TIỀN TỰ ĐỘNG*\n"
             "───────────────────\n"
             "📌 *Ngân hàng:* MBBANK (Ngân hàng Quân Đội)\n"
-            "📌 *Số tài khoản:* `0355101427`\n"
-            "📌 *Chủ tài khoản:* VO NGOC HAI YEN\n"
+            "📌 *Số tài khoản:* `0003456712345`\n"
+            "📌 *Chủ tài khoản:* LY THI CHAM\n"
             f"📌 *Nội dung chuyển khoản:* `{user_id}`\n"
             "───────────────────\n"
             "📸 *Quét mã QR bên dưới để tự động điền thông tin!*\n"
@@ -123,8 +143,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "🛒 MUA HÀNG":
         keyboard = []
         for key, prod in PRODUCTS.items():
-            count = len(db["codes"].get(key, []))
-            keyboard.append([InlineKeyboardButton(f"🎁 {prod['name']} - {prod['price_str']} (Còn: {count})", callback_data=f"prod_{key}")])
+            # Nếu đang bảo trì, bổ sung nhãn ĐANG BẢO TRÌ vào menu luôn
+            is_mainten = db.get("maintenance", {}).get(key, False)
+            status_str = "⚠️ BẢO TRÌ" if is_mainten else f"Còn: {len(db['codes'].get(key, []))}"
+            keyboard.append([InlineKeyboardButton(f"🎁 {prod['name']} - {prod['price_str']} ({status_str})", callback_data=f"prod_{key}")])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text("🛒 *DANH SÁCH CODE ĐANG CÓ SẴN:*", parse_mode="Markdown", reply_markup=reply_markup)
@@ -146,11 +168,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += "───────────────────\n"
         for key, prod in PRODUCTS.items():
             count = len(db["codes"].get(key, []))
-            msg += f"🎁 *{prod['name']}:* Còn `{count}` code\n"
+            is_mainten = db.get("maintenance", {}).get(key, False)
+            status_str = " (⚠️ Bảo trì)" if is_mainten else ""
+            msg += f"🎁 *{prod['name']}:* Còn `{count}` code{status_str}\n"
         msg += "───────────────────"
         await update.message.reply_text(msg, parse_mode="Markdown")
 
-# --- XỬ LÝ MUA HÀNG & CHECK KHO ---
+# --- XỬ LÝ MUA HÀNG & CHECK KHO & BẢO TRÌ CALLBACK ---
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -159,10 +183,42 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(user_id)
     data = query.data
 
+    # Xử lý các lệnh callback dành cho Admin thiết lập bảo trì
+    if data.startswith("mt_"):
+        if user_id not in ADMIN_IDS:
+            return
+        prod_key = data.replace("mt_", "")
+        if prod_key in db["maintenance"]:
+            db["maintenance"][prod_key] = not db["maintenance"][prod_key]
+            save_data(db)
+            
+            # Vẽ lại bảng điều khiển bảo trì
+            keyboard = []
+            for key, prod in PRODUCTS.items():
+                status = "🔴 OFF" if db["maintenance"].get(key, False) else "🟢 ON"
+                keyboard.append([
+                    InlineKeyboardButton(f"{prod['name']} ({prod['price_str']})", callback_data="none"),
+                    InlineKeyboardButton(status, callback_data=f"mt_{key}")
+                ])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            try:
+                await query.edit_message_reply_markup(reply_markup=reply_markup)
+            except Exception:
+                pass
+        return
+
     if data.startswith("prod_"):
-        prod_key = data.split("_")[1]
+        prod_key = data.split("_")[1] + "_" + data.split("_")[2]
         prod = PRODUCTS[prod_key]
         
+        # Kiểm tra trạng thái bảo trì trước khi cho phép xác nhận mua
+        if db.get("maintenance", {}).get(prod_key, False):
+            await query.edit_message_text(
+                text=f"⚠️ *Thông báo:* Gói sản phẩm *{prod['name']}* hiện đang được bảo trì nâng cấp. Vui lòng quay lại sau hoặc chọn gói khác!",
+                parse_mode="Markdown"
+            )
+            return
+            
         keyboard = [
             [
                 InlineKeyboardButton("✅ Xác Nhận Mua", callback_data=f"confirm_{prod_key}"),
@@ -178,7 +234,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
     elif data.startswith("confirm_"):
-        prod_key = data.split("_")[1]
+        prod_key = data.split("_")[1] + "_" + data.split("_")[2]
         prod = PRODUCTS[prod_key]
         u_info = db["users"].get(uid)
         
@@ -186,11 +242,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("❌ Lỗi dữ liệu người dùng.")
             return
 
+        # Kiểm tra lại trạng thái bảo trì một lần nữa tại bước bấm nút mua
+        if db.get("maintenance", {}).get(prod_key, False):
+            await query.edit_message_text(text=f"⚠️ Sản phẩm *{prod['name']}* vừa bước vào giai đoạn bảo trì!", parse_mode="Markdown")
+            return
+
         if not db["codes"].get(prod_key):
             suggest_keyboard = []
             for key, p_item in PRODUCTS.items():
                 p_count = len(db["codes"].get(key, []))
-                if p_count > 0:  
+                is_m = db.get("maintenance", {}).get(key, False)
+                if p_count > 0 and not is_m:  
                     suggest_keyboard.append([InlineKeyboardButton(f"🎁 {p_item['name']} (Còn: {p_count})", callback_data=f"prod_{key}")])
             
             error_msg = (
@@ -233,76 +295,49 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "cancel_buy":
         await query.edit_message_text("❌ *Đã hủy giao dịch mua hàng.*")
 
-# --- QUYỀN HẠN ADMIN ---
-async def cmd_themcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        return
-    if len(context.args) < 2:
-        await update.message.reply_text("⚠️ Cú pháp: `/themcode [tên_loại] [mã_code]`", parse_mode="Markdown")
-        return
-    prod_key = context.args[0].lower()
-    code_val = " ".join(context.args[1:])
-    if prod_key not in PRODUCTS:
-        await update.message.reply_text("❌ Loại sản phẩm sai! Các loại: fly88, f168, new88, qq88, shbet", parse_mode="Markdown")
-        return
-    db["codes"][prod_key].append(code_val)
-    save_data(db)
-    await update.message.reply_text(f"✅ Thêm thành công vào kho `{prod_key}`. Hiện có: `{len(db['codes'][prod_key])}` code.", parse_mode="Markdown")
+# --- CÁC HÀM QUẢN TRỊ ADMIN ---
 
-# [NÂNG CẤP ĐA NĂNG] THÊM NHIỀU MÃ CODE HỖ TRỢ CẢ 1 GAME HOẶC TRỘN NHIỀU GAME
-async def cmd_themcodesll(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Lệnh điều khiển bảo trì trực quan bằng nút bấm
+async def cmd_baotri(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         return
     
-    message_text = update.message.text
-    lines = [line.strip() for line in message_text.split('\n') if line.strip()]
-    
-    # Phân tích dòng đầu tiên (Ví dụ: /themcodesll fly88)
-    first_line_parts = lines[0].split()
-    
-    # Xác định game mặc định ban đầu từ dòng lệnh đầu tiên
-    default_game = None
-    if len(first_line_parts) >= 2:
-        game_arg = first_line_parts[1].lower()
-        if game_arg in PRODUCTS:
-            default_game = game_arg
+    keyboard = []
+    for key, prod in PRODUCTS.items():
+        # Thiết lập trạng thái hiển thị nút bấm ON (đang mở bán) / OFF (đang bảo trì)
+        status = "🔴 OFF" if db["maintenance"].get(key, False) else "🟢 ON"
+        keyboard.append([
+            InlineKeyboardButton(f"{prod['name']} ({prod['price_str']})", callback_data="none"),
+            InlineKeyboardButton(status, callback_data=f"mt_{key}")
+        ])
+        
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "🛠️ *BẢNG ĐIỀU KHIỂN BẢO TRÌ SẢN PHẨM*\n"
+        "───────────────────\n"
+        "👉 Ấn vào nút `🟢 ON` để chuyển sang `🔴 OFF` (Bảo trì ẩn gói)\n"
+        "👉 Ấn vào nút `🔴 OFF` để chuyển sang `🟢 ON` (Mở lại gói)", 
+        parse_mode="Markdown", 
+        reply_markup=reply_markup
+    )
 
-    # Loại bỏ dòng lệnh đầu tiên khỏi danh sách xử lý code
-    lines.pop(0)
-    
-    if not lines:
-        await update.message.reply_text(
-            "⚠️ *CÚ PHÁP THẦN TỐC THÊM CODE SLL:*\n\n"
-            "👉 *Cách 1: Thêm 1 game nhanh*\n"
-            "`/themcodesll fly88`\n"
-            "`mã_1`\n"
-            "`mã_2`\n\n"
-            "👉 *Cách 2: Thêm nhiều game trộn lẫn*\n"
-            "`/themcodesll` (hoặc có ghi game đầu)\n"
-            "`mã_fly_1`\n"
-            "`f168: mã_f_1`\n"
-            "`shbet:`\n"
-            "`mã_sh_1`", 
-            parse_mode="Markdown"
-        )
-        return
-
+# Hàm bổ trợ dùng chung cho xử lý nạp số lượng lớn code sll
+def process_bulk_codes(lines, suffix_type, default_game):
     current_game = default_game
-    report_dict = {} # Thống kê số lượng nhập thành công để báo cáo admin
+    report_dict = {}
     
     for line in lines:
-        # Kiểm tra xem dòng này có đổi game không (Tìm ký tự ":")
         if ":" in line:
             parts = line.split(":", 1)
             possible_game = parts[0].strip().lower()
             
-            # Nếu trước dấu ":" là tên game chuẩn trong danh mục
-            if possible_game in PRODUCTS:
-                current_game = possible_game
+            # Ghép hậu tố loại code tương ứng (_188 hoặc _588)
+            full_key = f"{possible_game}_{suffix_type}"
+            if full_key in PRODUCTS:
+                current_game = full_key
                 if current_game not in report_dict:
                     report_dict[current_game] = 0
                 
-                # Xử lý đoạn text phía sau dấu ":" nếu có code đi kèm trên cùng dòng
                 inline_content = parts[1].strip()
                 if inline_content:
                     sub_parts = inline_content.split(",")
@@ -311,9 +346,8 @@ async def cmd_themcodesll(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         if clean_code:
                             db["codes"][current_game].append(clean_code)
                             report_dict[current_game] += 1
-                continue # Chuyển sang dòng tiếp theo
+                continue
                 
-        # Nếu dòng không có dấu ":" (Tức là dòng chứa mã code thuần túy)
         if current_game:
             if current_game not in report_dict:
                 report_dict[current_game] = 0
@@ -324,25 +358,135 @@ async def cmd_themcodesll(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if clean_code:
                     db["codes"][current_game].append(clean_code)
                     report_dict[current_game] += 1
+                    
+    return report_dict
 
-    if not report_dict or sum(report_dict.values()) == 0:
-        await update.message.reply_text("❌ *Thất bại:* Bạn chưa chỉ định game hợp lệ hoặc nội dung trống!", parse_mode="Markdown")
+# Lệnh thêm code SLL cho gói 188 điểm (79K)
+async def cmd_themcodesll(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    
+    message_text = update.message.text
+    lines = [line.strip() for line in message_text.split('\n') if line.strip()]
+    first_line_parts = lines[0].split()
+    
+    default_game = None
+    if len(first_line_parts) >= 2:
+        game_arg = first_line_parts[1].lower()
+        if f"{game_arg}_188" in PRODUCTS:
+            default_game = f"{game_arg}_188"
+
+    lines.pop(0)
+    if not lines:
+        await update.message.reply_text("⚠️ Cú pháp trống! Vui lòng nhập danh sách mã code xuống dòng.", parse_mode="Markdown")
         return
 
-    # Lưu dữ liệu mới vào file
+    report_dict = process_bulk_codes(lines, "188", default_game)
+    if not report_dict or sum(report_dict.values()) == 0:
+        await update.message.reply_text("❌ *Thất bại:* Chỉ định game 188 điểm sai hoặc nội dung rỗng!", parse_mode="Markdown")
+        return
+
     save_data(db)
-    
-    # Gửi tin nhắn tóm tắt kết quả
-    msg = "📊 *KẾT QUẢ THÊM CODE VÀO KHO:*\n"
-    msg += "───────────────────\n"
-    total_added = 0
-    for game, count in report_dict.items():
+    msg = "📊 *KẾT QUẢ THÊM CODE 188 ĐIỂM (79K):*\n───────────────────\n"
+    for g_key, count in report_dict.items():
         if count > 0:
-            msg += f"✅ *{PRODUCTS[game]['name']}:* Thêm `+{count}` code ➡️ (Tổng kho: `{len(db['codes'][game])}`)\n"
-            total_added += count
-            
-    msg += f"───────────────────\n🔥 Hệ thống đã cập nhật tổng cộng `{total_added}` code mới thành công!"
+            msg += f"✅ *{PRODUCTS[g_key]['name']}:* Thêm `+{count}` code ➡️ (Tổng: `{len(db['codes'][g_key])}`)\n"
     await update.message.reply_text(msg, parse_mode="Markdown")
+
+# Lệnh thêm code SLL cho gói 588 điểm (220K)
+async def cmd_themcodesll1(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    
+    message_text = update.message.text
+    lines = [line.strip() for line in message_text.split('\n') if line.strip()]
+    first_line_parts = lines[0].split()
+    
+    default_game = None
+    if len(first_line_parts) >= 2:
+        game_arg = first_line_parts[1].lower()
+        if f"{game_arg}_588" in PRODUCTS:
+            default_game = f"{game_arg}_588"
+
+    lines.pop(0)
+    if not lines:
+        await update.message.reply_text("⚠️ Cú pháp trống! Vui lòng nhập danh sách mã code xuống dòng giống hệt như lệnh cũ.", parse_mode="Markdown")
+        return
+
+    report_dict = process_bulk_codes(lines, "588", default_game)
+    if not report_dict or sum(report_dict.values()) == 0:
+        await update.message.reply_text("❌ *Thất bại:* Chỉ định game 588 điểm sai hoặc nội dung rỗng!", parse_mode="Markdown")
+        return
+
+    save_data(db)
+    msg = "📊 *KẾT QUẢ THÊM CODE 588 ĐIỂM (220K):*\n───────────────────\n"
+    for g_key, count in report_dict.items():
+        if count > 0:
+            msg += f"✅ *{PRODUCTS[g_key]['name']}:* Thêm `+{count}` code ➡️ (Tổng: `{len(db['codes'][g_key])}`)\n"
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+# Lệnh xóa một mã code ra khỏi kho dữ liệu hệ thống
+async def cmd_xoacode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    if not context.args:
+        await update.message.reply_text("⚠️ Cú pháp: `/xoacode [mã_code_cần_xóa]`", parse_mode="Markdown")
+        return
+        
+    target_code = " ".join(context.args).strip()
+    found = False
+    
+    for key in db["codes"].keys():
+        if target_code in db["codes"][key]:
+            db["codes"][key].remove(target_code)
+            found = True
+            save_data(db)
+            await update.message.reply_text(f"✅ Đã xoá thành công mã code ra khỏi kho sản phẩm: *{PRODUCTS[key]['name']}*.", parse_mode="Markdown")
+            break
+            
+    if not found:
+        await update.message.reply_text("❌ Không tìm thấy mã code này trong bất kỳ sản phẩm nào trên hệ thống.", parse_mode="Markdown")
+
+# Lệnh xem toàn bộ mã code cụ thể đang tồn kho của từng game và mệnh giá
+async def cmd_slcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+        
+    msg = "📋 *DANH SÁCH CHI TIẾT CODE TỒN KHO*\n"
+    msg += "───────────────────\n"
+    
+    for key, prod in PRODUCTS.items():
+        code_list = db["codes"].get(key, [])
+        msg += f"🎮 *{prod['name']}* - Giá: `{prod['price_str']}` (Còn: `{len(code_list)}`):\n"
+        if code_list:
+            for idx, c in enumerate(code_list, start=1):
+                msg += f"  `{idx}.` `{c}`\n"
+        else:
+            msg += "  _(Kho trống)_\n"
+        msg += "───────────────────\n"
+        
+    # Cắt nhỏ tin nhắn tránh trường hợp danh sách quá dài vượt giới hạn ký tự của Telegram
+    if len(msg) > 4000:
+        chunks = [msg[i:i+4000] for i in range(0, len(msg), 4000)]
+        for chunk in chunks:
+            await update.message.reply_text(chunk, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def cmd_themcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("⚠️ Cú pháp: `/themcode [tên_loại_hậu_tố] [mã_code]`\nVí dụ: `/themcode fly88_588 ABCDE`", parse_mode="Markdown")
+        return
+    prod_key = context.args[0].lower()
+    code_val = " ".join(context.args[1:])
+    if prod_key not in PRODUCTS:
+        await update.message.reply_text("❌ Sai mã sản phẩm! Vui lòng chọn định dạng mẫu như: `fly88_188` hoặc `fly88_588`", parse_mode="Markdown")
+        return
+    db["codes"][prod_key].append(code_val)
+    save_data(db)
+    await update.message.reply_text(f"✅ Thêm thành công vào kho `{prod_key}`. Hiện có: `{len(db['codes'][prod_key])}` code.", parse_mode="Markdown")
 
 async def cmd_tong(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -391,13 +535,19 @@ async def cmd_thongbao(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- HÀM CHẠY BOT CHÍNH ---
 def main():
+    # Điền token bot telegram của bạn tại đây
     TOKEN = "8610843811:AAHIaWRgc1A1CSyTivsDXXy6z0Usy_B6NR4"
     
     application = Application.builder().token(TOKEN).build()
     
+    # Đăng ký danh sách cổng lệnh xử lý điều hướng bot
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("themcode", cmd_themcode))
     application.add_handler(CommandHandler("themcodesll", cmd_themcodesll))
+    application.add_handler(CommandHandler("themcodesll1", cmd_themcodesll1))
+    application.add_handler(CommandHandler("baotri", cmd_baotri))
+    application.add_handler(CommandHandler("xoacode", cmd_xoacode))
+    application.add_handler(CommandHandler("slcode", cmd_slcode))
     application.add_handler(CommandHandler("tong", cmd_tong))
     application.add_handler(CommandHandler("nap", cmd_nap))
     application.add_handler(CommandHandler("thongbao", cmd_thongbao))
