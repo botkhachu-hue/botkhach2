@@ -14,7 +14,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 DATA_FILE = "bot_data.json"
 
 # Danh sách ID Admin của bạn
-ADMIN_IDS = [8789260361, 8619503816]
+ADMIN_IDS = [8643692536, 8619503816]
 
 # Cấu hình danh mục sản phẩm
 PRODUCTS = {
@@ -289,7 +289,7 @@ async def cmd_thongbao(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- HÀM CHẠY BOT CHÍNH ---
 def main():
-    TOKEN = "8610843810:AAHIaWRgc1A1CSyTivsDXXy6z0Usy_B6NR4"
+    TOKEN = "8610843811:AAHIaWRgc1A1CSyTivsDXXy6z0Usy_B6NR4"
     
     # Khởi tạo application đúng cách
     application = Application.builder().token(TOKEN).build()
