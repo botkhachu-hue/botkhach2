@@ -328,10 +328,17 @@ async def cmd_thongbao(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
     await update.message.reply_text(f"📢 *Đã gửi thông báo toàn hệ thống!*\n✅ Thành công: `{success_count}`\n❌ Thất bại (Block bot): `{fail_count}`", parse_mode="Markdown")
 
-# --- HÀM KHỞI CHẠY CHÍNH CHUẨN HOÁ CHỐNG CRASH ---
+# --- HÀM KHỞI CHẠY CHÍNH CHUẨN HOÁ SERVER ---
 def main():
     TOKEN = "8610843811:AAHIaWRgc1A1CSyTivsDXXy6z0Usy_B6NR4"
     
+    # Ép buộc khởi tạo một Event Loop mới độc lập cho luồng chạy của Railway
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
     application = Application.builder().token(TOKEN).build()
     
     # Đăng ký các bộ xử lý (Handlers)
@@ -346,11 +353,8 @@ def main():
     
     print("Bot đang khởi động thành công...")
     
-    # Cơ chế kích hoạt vòng lặp an toàn đa nền tảng
-    try:
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
-    except Exception as e:
-        logging.error(f"Lỗi khởi chạy chính: {e}")
+    # Kích hoạt vòng lặp an toàn
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
