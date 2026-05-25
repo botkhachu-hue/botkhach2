@@ -333,6 +333,7 @@ def main():
     # Token chính thức của bạn
     TOKEN = "8610843811:AAHIaWRgc1A1CSyTivsDXXy6z0Usy_B6NR4"
     
+    # Khởi tạo Application chuẩn hóa chống crash trên tất cả phiên bản python-telegram-bot
     application = Application.builder().token(TOKEN).build()
     
     # Handlers mặc định cho Khách
@@ -347,7 +348,12 @@ def main():
     application.add_handler(CommandHandler("thongbao", cmd_thongbao))
     
     print("Bot đang khởi động thành công...")
-    application.run_polling()
+    
+    # Cơ chế chạy không chặn (Chống lỗi Updater trên môi trường Python 3.13 / v21)
+    try:
+        application.run_polling(close_loop=False)
+    except TypeError:
+        application.run_polling()
 
 if __name__ == "__main__":
     main()
