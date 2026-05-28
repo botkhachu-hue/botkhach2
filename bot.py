@@ -100,10 +100,42 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(welcome_text, parse_mode="Markdown", reply_markup=main_menu_keyboard())
 
-# Biến lưu trữ trạng thái chờ nhập tên tài khoản của user
-user_waiting_for_account = {}
-# Biến lưu trữ lựa chọn game đang chờ xác nhận
-user_pending_confirmation = {}
+# Biến lưu trữ trạng thái
+user_waiting_for_account = {}          # User chờ nhập tên tài khoản
+user_pending_confirmation = {}         # User chờ xác nhận mua
+timeout_tasks = {}                     # Task timeout hoàn tiền
+admin_waiting_for_points = {}          # Admin đang chờ nhập số điểm cho order_id
+admin_waiting_for_reason = {}          # Admin đang chờ nhập lý do từ chối cho order_id
+
+async def refund_user(uid, amount, game_display, context):
+    """Hoàn tiền cho user sau timeout"""
+    await asyncio.sleep(300)  # 5 phút = 300 giây
+    
+    if uid in user_waiting_for_account:
+        game_info = user_waiting_for_account[uid]
+        del user_waiting_for_account[uid]
+        
+        if uid in db["users"]:
+            db["users"][uid]["balance"] += PRICE
+            save_data(db)
+            
+            try:
+                await context.bot.send_message(
+                    chat_id=int(uid),
+                    text=f"⏰ *HẾT THỜI GIAN NHẬP TÊN TÀI KHOẢN!*\n"
+                         f"───────────────────\n"
+                         f"🎮 *Game:* {game_display}\n"
+                         f"💰 *Số tiền đã được hoàn lại:* `{PRICE_STR}`\n"
+                         f"💳 *Số dư hiện tại:* `{db['users'][uid]['balance']:,} VNĐ`\n"
+                         f"───────────────────\n"
+                         f"⚠️ Vui lòng thực hiện lại giao dịch nếu vẫn muốn mua hàng!",
+                    parse_mode="Markdown"
+                )
+            except Exception as e:
+                logging.error(f"Không thể gửi thông báo hoàn tiền cho {uid}: {e}")
+        
+        if uid in timeout_tasks:
+            del timeout_tasks[uid]
 
 # --- XỬ LÝ DI CHUYỂN MENU CHÍNH ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -114,15 +146,115 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logging.info(f"User {user_id} gửi: {text}")
 
+    # Xử lý admin đang chờ nhập số điểm
+    if user_id in ADMIN_IDS and user_id in admin_waiting_for_points:
+        order_id = admin_waiting_for_points[user_id]
+        del admin_waiting_for_points[user_id]
+        
+        try:
+            points = int(text.strip())
+        except ValueError:
+            await update.message.reply_text("❌ Số điểm không hợp lệ! Vui lòng nhập một số nguyên.")
+            # Cho admin nhập lại
+            admin_waiting_for_points[user_id] = order_id
+            return
+        
+        if order_id not in db["pending_orders"]:
+            await update.message.reply_text("❌ Không tìm thấy đơn hàng!")
+            return
+        
+        order = db["pending_orders"][order_id]
+        if order["status"] != "pending":
+            await update.message.reply_text(f"❌ Đơn hàng này đã được {order['status']} rồi!")
+            return
+        
+        # Cập nhật đơn hàng
+        order["status"] = "approved"
+        order["approved_at"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        order["approved_by"] = user_id
+        order["points"] = points
+        save_data(db)
+        
+        # Gửi thông báo thành công cho user
+        user_msg = (
+            f"🎉 *NẠP ĐIỂM THÀNH CÔNG!* 🎉\n"
+            f"───────────────────\n"
+            f"🎮 *Game:* {order['display']}\n"
+            f"🔑 *Tên tài khoản:* `{order['account_name']}`\n"
+            f"⭐ *Số điểm đã nạp:* `{points:,} điểm`\n"
+            f"💰 *Giá trị nạp:* {PRICE_STR}\n"
+            f"───────────────────\n"
+            f"✅ *Giao dịch thành công! Cảm ơn bạn đã sử dụng dịch vụ!*"
+        )
+        
+        try:
+            await context.bot.send_message(chat_id=int(order["user_id"]), text=user_msg, parse_mode="Markdown")
+            await update.message.reply_text(f"✅ Đã duyệt đơn hàng và nạp `{points:,} điểm` thành công cho {order['user_name']}!", parse_mode="Markdown")
+        except Exception as e:
+            await update.message.reply_text(f"❌ Đã duyệt đơn hàng nhưng không thể gửi thông báo: {e}")
+        return
+
+    # Xử lý admin đang chờ nhập lý do từ chối
+    if user_id in ADMIN_IDS and user_id in admin_waiting_for_reason:
+        order_id = admin_waiting_for_reason[user_id]
+        del admin_waiting_for_reason[user_id]
+        reason = text.strip()
+        
+        if order_id not in db["pending_orders"]:
+            await update.message.reply_text("❌ Không tìm thấy đơn hàng!")
+            return
+        
+        order = db["pending_orders"][order_id]
+        if order["status"] != "pending":
+            await update.message.reply_text(f"❌ Đơn hàng này đã được {order['status']} rồi!")
+            return
+        
+        # HOÀN TIỀN CHO USER
+        u_info = db["users"].get(order["user_id"])
+        if u_info:
+            u_info["balance"] += order["amount"]
+            save_data(db)
+        
+        order["status"] = "rejected"
+        order["reason"] = reason
+        order["rejected_at"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        order["rejected_by"] = user_id
+        save_data(db)
+        
+        user_msg = (
+            f"❌ *YÊU CẦU NẠP ĐIỂM BỊ TỪ CHỐI*\n"
+            f"───────────────────\n"
+            f"🎮 *Game:* {order['display']}\n"
+            f"🔑 *Tên tài khoản:* `{order['account_name']}`\n"
+            f"💰 *Số tiền đã được hoàn lại:* {PRICE_STR}\n"
+            f"───────────────────\n"
+            f"📝 *Lý do từ chối:* {reason}\n"
+            f"───────────────────\n"
+            f"💡 Vui lòng liên hệ Admin để được hỗ trợ thêm!"
+        )
+        
+        if u_info:
+            user_msg += f"\n💳 *Số dư hiện tại:* `{u_info['balance']:,} VNĐ`"
+        
+        try:
+            await context.bot.send_message(chat_id=int(order["user_id"]), text=user_msg, parse_mode="Markdown")
+            await update.message.reply_text(f"✅ Đã từ chối đơn hàng `{order_id}` và hoàn tiền cho người dùng!", parse_mode="Markdown")
+        except Exception as e:
+            await update.message.reply_text(f"❌ Đã từ chối đơn hàng nhưng không thể gửi thông báo: {e}")
+        return
+
     # Kiểm tra xem user có đang chờ nhập tên tài khoản không
     if uid in user_waiting_for_account:
+        if uid in timeout_tasks:
+            timeout_tasks[uid].cancel()
+            del timeout_tasks[uid]
+        
         game_info = user_waiting_for_account[uid]
         game_name = game_info["game"]
         game_value = game_info["value"]
         account_name = text.strip()
         del user_waiting_for_account[uid]
         
-        # Tạo đơn hàng chờ duyệt
         order_id = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{user_id}"
         db["pending_orders"][order_id] = {
             "user_id": uid,
@@ -133,37 +265,43 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "display": f"{game_name}({game_value})",
             "account_name": account_name,
             "status": "pending",
+            "amount": PRICE,
             "created_at": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         }
         save_data(db)
         
-        # Gửi thông báo cho Admin
+        # Gửi tin nhắn cho Admin kèm nút bấm
         admin_msg = (
-            f"🆕 *YÊU CẦU MUA CODE MỚI*\n"
+            f"🆕 *YÊU CẦU NẠP ĐIỂM MỚI*\n"
             f"───────────────────\n"
-            f"🆔 *Order ID:* `{order_id}`\n"
+            f"🆔 *Mã lệnh:* `{order_id}`\n"
             f"👤 *Người dùng:* {update.effective_user.first_name}\n"
             f"📝 *Username:* @{update.effective_user.username or 'Không có'}\n"
             f"🎮 *Game:* {game_name}({game_value})\n"
             f"🔑 *Tên tài khoản:* `{account_name}`\n"
-            f"💰 *Giá:* {PRICE_STR}\n"
+            f"💰 *Giá trị:* {PRICE_STR}\n"
             f"⏰ *Thời gian:* {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n"
             f"───────────────────\n"
-            f"✅ /approve_{order_id} - Duyệt đơn\n"
-            f"❌ /reject_{order_id} <lý do> - Từ chối"
+            f"👉 *Vui lòng xử lý lệnh bên dưới:*"
         )
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ DUYỆT LỆNH", callback_data=f"admin_approve_{order_id}")],
+            [InlineKeyboardButton("❌ TỪ CHỐI", callback_data=f"admin_reject_{order_id}")]
+        ])
         
         for admin_id in ADMIN_IDS:
             try:
-                await context.bot.send_message(chat_id=admin_id, text=admin_msg, parse_mode="Markdown")
+                await context.bot.send_message(chat_id=admin_id, text=admin_msg, parse_mode="Markdown", reply_markup=keyboard)
             except Exception as e:
                 logging.error(f"Không thể gửi tin nhắn đến admin {admin_id}: {e}")
         
         await update.message.reply_text(
-            f"✅ *Đã gửi yêu cầu mua code {game_name}({game_value}) đến Admin!*\n\n"
+            f"✅ *Đã gửi yêu cầu nạp điểm {game_name}({game_value}) đến Admin!*\n\n"
             f"🔑 *Tên tài khoản:* `{account_name}`\n"
-            f"💰 *Giá:* {PRICE_STR}\n\n"
-            f"⏳ Vui lòng chờ Admin duyệt đơn hàng. Bạn sẽ nhận được code sau khi được duyệt!",
+            f"💰 *Đã trừ tiền:* {PRICE_STR}\n"
+            f"💳 *Số dư hiện tại:* `{db['users'][uid]['balance']:,} VNĐ`\n\n"
+            f"⏳ Vui lòng chờ Admin duyệt và nạp điểm vào tài khoản game của bạn!",
             parse_mode="Markdown"
         )
         return
@@ -208,18 +346,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "🛒 MUA HÀNG":
         keyboard = []
         msg_header = (
-            "🛒 *DANH SÁCH CODE SẴN HÀNG*\n"
-            "───────────────────────────\n"
-            "⚡️ *Hệ thống phân phối tự động 24/7*\n"
-            "👉 Chọn game cần mua code:"
+            "🛒 *DANH SÁCH GAME*\n"
+            "───────────────────\n"
+            "👉 Chọn game cần nạp điểm:"
         )
         
-        # Tạo nút cho từng game - HÀNG DỌC (mỗi nút 1 hàng)
         for game in GAMES:
             key = f"{game['name'].lower()}_{game['value'].replace('-', '_')}"
             is_mainten = db.get("maintenance", {}).get(key, False)
-            status = "🔴 Bảo trì" if is_mainten else "🟢 Còn code"
-            # Hiển thị: Fly88(188-588)-118K [Còn code]
+            status = "🔴 Bảo trì" if is_mainten else "🟢 Hoạt động"
             button_text = f"🎁 {game['name']}({game['value']})-{PRICE_STR} [{status}]"
             keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_{key}")])
         
@@ -242,13 +377,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         support_msg = (
             "☎️ *TRUNG TÂM CHĂM SÓC KHÁCH HÀNG*\n"
             "───────────────────────────\n"
-            "👋 Chào bạn! Nếu gặp bất kỳ vấn đề gì liên quan tới lỗi nạp tiền hoặc lỗi code...\n\n"
-            "👉 Vui lòng nhấn vào nút dưới đây để kết nối với bộ phận CSKH."
+            "👋 Chào bạn! Nếu gặp bất kỳ vấn đề gì, vui lòng liên hệ bộ phận CSKH.\n\n"
+            "👉 Nhấn nút bên dưới để kết nối với Admin!"
         )
-        keyboard = [[InlineKeyboardButton("💬 Tham Gia Hỗ Trợ", url="https://t.me/cskhcodeminilive")]]
+        keyboard = [[InlineKeyboardButton("💬 LIÊN HỆ ADMIN", url="https://t.me/cskhcodeminilive")]]
         await update.message.reply_text(support_msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# --- XỬ LÝ MUA HÀNG ---
+# --- XỬ LÝ CALLBACK (NÚT BẤM CỦA ADMIN VÀ USER) ---
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -282,7 +417,76 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
         return
 
-    # Xử lý chọn game (bước 1 - hiển thị nút xác nhận)
+    # Xử lý ADMIN DUYỆT LỆNH (bấm nút)
+    if data.startswith("admin_approve_"):
+        if user_id not in ADMIN_IDS:
+            await query.answer("⚠️ Chỉ Admin mới có quyền này!", show_alert=True)
+            return
+        
+        order_id = data.replace("admin_approve_", "")
+        
+        if order_id not in db["pending_orders"]:
+            await query.edit_message_text("❌ Không tìm thấy đơn hàng!")
+            return
+        
+        order = db["pending_orders"][order_id]
+        if order["status"] != "pending":
+            await query.edit_message_text(f"❌ Đơn hàng này đã được {order['status']} rồi!")
+            return
+        
+        # Lưu trạng thái chờ admin nhập số điểm
+        admin_waiting_for_points[user_id] = order_id
+        
+        await query.edit_message_text(
+            f"✅ *ĐANG DUYỆT LỆNH* `{order_id}`\n"
+            f"───────────────────\n"
+            f"🎮 *Game:* {order['display']}\n"
+            f"👤 *Người dùng:* {order['user_name']}\n"
+            f"🔑 *Tên tài khoản:* `{order['account_name']}`\n"
+            f"💰 *Giá trị:* {PRICE_STR}\n"
+            f"───────────────────\n\n"
+            f"📝 *Vui lòng nhập SỐ ĐIỂM cần nạp cho người dùng:*\n"
+            f"(Ví dụ: 389)\n\n"
+            f"⏳ *Gõ số điểm ngay tại ô chat này để hoàn tất duyệt lệnh!*",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Xử lý ADMIN TỪ CHỐI LỆNH (bấm nút)
+    if data.startswith("admin_reject_"):
+        if user_id not in ADMIN_IDS:
+            await query.answer("⚠️ Chỉ Admin mới có quyền này!", show_alert=True)
+            return
+        
+        order_id = data.replace("admin_reject_", "")
+        
+        if order_id not in db["pending_orders"]:
+            await query.edit_message_text("❌ Không tìm thấy đơn hàng!")
+            return
+        
+        order = db["pending_orders"][order_id]
+        if order["status"] != "pending":
+            await query.edit_message_text(f"❌ Đơn hàng này đã được {order['status']} rồi!")
+            return
+        
+        # Lưu trạng thái chờ admin nhập lý do
+        admin_waiting_for_reason[user_id] = order_id
+        
+        await query.edit_message_text(
+            f"❌ *ĐANG TỪ CHỐI LỆNH* `{order_id}`\n"
+            f"───────────────────\n"
+            f"🎮 *Game:* {order['display']}\n"
+            f"👤 *Người dùng:* {order['user_name']}\n"
+            f"🔑 *Tên tài khoản:* `{order['account_name']}`\n"
+            f"💰 *Giá trị:* {PRICE_STR}\n"
+            f"───────────────────\n\n"
+            f"📝 *Mời Admin viết lý do từ chối lệnh `{order_id}` tại ô chat này:*\n\n"
+            f"⏳ *Gõ lý do ngay tại ô chat này để hoàn tất từ chối lệnh!*",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Xử lý chọn game (user)
     if data.startswith("select_"):
         game_key = data.replace("select_", "")
         prod = PRODUCTS.get(game_key)
@@ -298,7 +502,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
-        # Kiểm tra số dư
         u_info = db["users"].get(uid)
         if not u_info:
             await query.edit_message_text("❌ Lỗi dữ liệu người dùng.")
@@ -311,10 +514,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
-        # Lưu lựa chọn game để xác nhận
         user_pending_confirmation[uid] = game_key
         
-        # Hiển thị nút xác nhận
         confirm_keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("✅ XÁC NHẬN MUA", callback_data=f"confirm_{game_key}")],
             [InlineKeyboardButton("❌ HỦY BỎ", callback_data="cancel_buy")]
@@ -327,13 +528,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  f"💰 *Giá tiền:* `{prod['price_str']}` ({prod['price']:,} VNĐ)\n"
                  f"💳 *Số dư hiện tại:* `{u_info['balance']:,} VNĐ`\n"
                  f"───────────────────\n"
-                 f"⚠️ *Vui lòng xác nhận để tiếp tục mua hàng!*",
+                 f"⚠️ *Sau khi xác nhận, tiền sẽ được trừ khỏi tài khoản ngay lập tức!*",
             parse_mode="Markdown",
             reply_markup=confirm_keyboard
         )
         return
 
-    # Xử lý xác nhận mua (bước 2)
+    # Xử lý xác nhận mua (trừ tiền ngay)
     if data.startswith("confirm_"):
         game_key = data.replace("confirm_", "")
         prod = PRODUCTS.get(game_key)
@@ -342,11 +543,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("❌ Sản phẩm không tồn tại!")
             return
         
-        # Xóa pending confirmation nếu có
         if uid in user_pending_confirmation:
             del user_pending_confirmation[uid]
         
-        # Kiểm tra lại số dư
         u_info = db["users"].get(uid)
         if not u_info:
             await query.edit_message_text("❌ Lỗi dữ liệu người dùng.")
@@ -366,17 +565,28 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
-        # Yêu cầu nhập tên tài khoản
+        # TRỪ TIỀN NGAY
+        u_info["balance"] -= prod["price"]
+        save_data(db)
+        
         user_waiting_for_account[uid] = {
             "game": prod["game"],
             "value": prod["value"]
         }
+        
+        # Tạo timeout 5 phút
+        task = asyncio.create_task(refund_user(uid, prod["price"], prod["display"], context))
+        timeout_tasks[uid] = task
+        
         await query.edit_message_text(
-            text=f"🎮 *Game:* {prod['display']}\n"
-                 f"💰 *Giá tiền:* `{prod['price_str']}` ({prod['price']:,} VNĐ)\n\n"
-                 f"📝 *Vui lòng nhập TÊN TÀI KHOẢN game của bạn:*\n"
-                 f"(Admin sẽ gửi code vào tài khoản này sau khi duyệt)\n\n"
-                 f"⏳ *Lưu ý:* Bạn có 5 phút để nhập, nếu quá thời gian vui lòng chọn lại.\n"
+            text=f"✅ *ĐÃ TRỪ TIỀN THÀNH CÔNG!*\n"
+                 f"───────────────────\n"
+                 f"🎮 *Game:* {prod['display']}\n"
+                 f"💰 *Đã trừ:* `{prod['price_str']}`\n"
+                 f"💳 *Số dư còn lại:* `{u_info['balance']:,} VNĐ`\n"
+                 f"───────────────────\n\n"
+                 f"📝 *Vui lòng nhập TÊN TÀI KHOẢN game của bạn:*\n\n"
+                 f"⏰ *Bạn có 5 phút để nhập, nếu quá thời gian tiền sẽ được hoàn lại!*\n"
                  f"❌ Nhập /cancel để hủy giao dịch.",
             parse_mode="Markdown"
         )
@@ -389,172 +599,37 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ *Đã hủy giao dịch mua hàng.*", parse_mode="Markdown")
         return
 
-# --- CÁC HÀNH ĐỘNG CỦA ADMIN (DUYỆT/TỪ CHỐI ĐƠN HÀNG) ---
-async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in ADMIN_IDS:
-        return
-    
-    text = update.message.text.strip()
-    logging.info(f"Admin action từ {user_id}: {text}")
-    
-    # Xử lý lệnh duyệt
-    if text.startswith("/approve_"):
-        order_id = text.replace("/approve_", "").strip()
-        
-        if order_id not in db["pending_orders"]:
-            await update.message.reply_text("❌ Không tìm thấy đơn hàng!")
-            return
-        
-        order = db["pending_orders"][order_id]
-        if order["status"] != "pending":
-            await update.message.reply_text(f"❌ Đơn hàng này đã được {order['status']} rồi!")
-            return
-        
-        game_key = f"{order['game'].lower()}_{order['value'].replace('-', '_')}"
-        prod = PRODUCTS[game_key]
-        
-        u_info = db["users"].get(order["user_id"])
-        if not u_info:
-            await update.message.reply_text("❌ Không tìm thấy thông tin người dùng!")
-            return
-        
-        if u_info["balance"] < prod["price"]:
-            await update.message.reply_text(
-                f"❌ Số dư của user không đủ! Ví có {u_info['balance']:,} VNĐ, cần {prod['price']:,} VNĐ.\n"
-                f"Vui lòng yêu cầu user nạp thêm tiền trước khi duyệt."
-            )
-            return
-        
-        context.user_data["pending_approve"] = order_id
-        await update.message.reply_text(
-            f"✅ *Đang duyệt đơn hàng:* `{order_id}`\n"
-            f"🎮 *Game:* {order['display']}\n"
-            f"🔑 *Tên tài khoản:* `{order['account_name']}`\n"
-            f"💰 *Giá:* {PRICE_STR}\n\n"
-            f"📝 *Vui lòng nhập MÃ CODE để gửi cho người dùng:*\n"
-            f"(Nhập /cancel để hủy)",
-            parse_mode="Markdown"
-        )
-        return
-    
-    # Xử lý lệnh từ chối
-    if text.startswith("/reject_"):
-        parts = text.split(" ", 1)
-        if len(parts) < 2:
-            await update.message.reply_text("❌ Sai cú pháp! Vui lòng nhập: /reject_<order_id> <lý do từ chối>")
-            return
-        
-        order_id = parts[0].replace("/reject_", "")
-        reason = parts[1]
-        
-        if order_id not in db["pending_orders"]:
-            await update.message.reply_text("❌ Không tìm thấy đơn hàng!")
-            return
-        
-        order = db["pending_orders"][order_id]
-        if order["status"] != "pending":
-            await update.message.reply_text(f"❌ Đơn hàng này đã được {order['status']} rồi!")
-            return
-        
-        order["status"] = "rejected"
-        order["reason"] = reason
-        order["rejected_at"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        order["rejected_by"] = user_id
-        save_data(db)
-        
-        user_msg = (
-            f"❌ *YÊU CẦU MUA CODE BỊ TỪ CHỐI*\n"
-            f"───────────────────\n"
-            f"🎮 *Game:* {order['display']}\n"
-            f"🔑 *Tên tài khoản:* `{order['account_name']}`\n"
-            f"💰 *Giá:* {PRICE_STR}\n"
-            f"───────────────────\n"
-            f"📝 *Lý do từ chối:* {reason}\n"
-            f"───────────────────\n"
-            f"💡 Vui lòng liên hệ Admin để được hỗ trợ thêm!"
-        )
-        
-        try:
-            await context.bot.send_message(chat_id=int(order["user_id"]), text=user_msg, parse_mode="Markdown")
-            await update.message.reply_text(f"✅ Đã từ chối đơn hàng `{order_id}` và thông báo lý do đến người dùng!", parse_mode="Markdown")
-        except Exception as e:
-            await update.message.reply_text(f"❌ Đã từ chối đơn hàng nhưng không thể gửi thông báo: {e}")
-        return
-
-# Xử lý nhập code từ admin
-async def handle_admin_code_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in ADMIN_IDS:
-        return
-    
-    if "pending_approve" not in context.user_data:
-        return
-    
-    text = update.message.text.strip()
-    
-    if text == "/cancel":
-        del context.user_data["pending_approve"]
-        await update.message.reply_text("❌ Đã hủy duyệt đơn hàng!")
-        return
-    
-    order_id = context.user_data["pending_approve"]
-    del context.user_data["pending_approve"]
-    
-    if order_id not in db["pending_orders"]:
-        await update.message.reply_text("❌ Đơn hàng không tồn tại!")
-        return
-    
-    order = db["pending_orders"][order_id]
-    if order["status"] != "pending":
-        await update.message.reply_text(f"❌ Đơn hàng đã được {order['status']} trước đó!")
-        return
-    
-    code = text
-    game_key = f"{order['game'].lower()}_{order['value'].replace('-', '_')}"
-    prod = PRODUCTS[game_key]
-    
-    u_info = db["users"].get(order["user_id"])
-    if not u_info:
-        await update.message.reply_text("❌ Không tìm thấy người dùng!")
-        return
-    
-    u_info["balance"] -= prod["price"]
-    time_now = datetime.now().strftime("%d/%m %H:%M")
-    u_info["history"].append(f"[{time_now}] Mua {order['display']} (-{PRICE_STR}) - TK: {order['account_name']}")
-    
-    order["status"] = "approved"
-    order["approved_at"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    order["approved_by"] = user_id
-    order["code"] = code
-    save_data(db)
-    
-    user_msg = (
-        f"🎉 *MUA HÀNG THÀNH CÔNG!* 🎉\n"
-        f"───────────────────\n"
-        f"🎮 *Game:* {order['display']}\n"
-        f"🔑 *Tên tài khoản:* `{order['account_name']}`\n"
-        f"🔐 *Mã Code:* `{code}`\n"
-        f"💰 *Số dư ví còn lại:* `{u_info['balance']:,} VNĐ`\n"
-        f"───────────────────\n"
-        f"✨ Ấn và đè vào mã code ở trên để copy nhanh nhé.\n"
-        f"💡 *Lưu ý:* Code có thể nhập 1 lần duy nhất, vui lòng nhập đúng tài khoản!"
-    )
-    
-    try:
-        await context.bot.send_message(chat_id=int(order["user_id"]), text=user_msg, parse_mode="Markdown")
-        await update.message.reply_text(f"✅ Đã duyệt đơn hàng và gửi code thành công cho {order['user_name']}!")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Đã duyệt đơn hàng nhưng không thể gửi code: {e}")
-
 # Xử lý cancel từ user
 async def handle_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     uid = str(user_id)
     
     if uid in user_waiting_for_account:
+        if uid in timeout_tasks:
+            timeout_tasks[uid].cancel()
+            del timeout_tasks[uid]
+        
+        game_info = user_waiting_for_account[uid]
+        game_display = f"{game_info['game']}({game_info['value']})"
         del user_waiting_for_account[uid]
-        await update.message.reply_text("❌ *Đã hủy giao dịch mua hàng.*", parse_mode="Markdown")
+        
+        if uid in db["users"]:
+            db["users"][uid]["balance"] += PRICE
+            save_data(db)
+            
+            await update.message.reply_text(
+                f"❌ *ĐÃ HỦY GIAO DỊCH VÀ HOÀN TIỀN!*\n"
+                f"───────────────────\n"
+                f"🎮 *Game:* {game_display}\n"
+                f"💰 *Số tiền hoàn lại:* {PRICE_STR}\n"
+                f"💳 *Số dư hiện tại:* `{db['users'][uid]['balance']:,} VNĐ`\n"
+                f"───────────────────\n"
+                f"✅ Bạn có thể thực hiện lại giao dịch nếu muốn!",
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text("❌ *Đã hủy giao dịch!*", parse_mode="Markdown")
+            
     elif uid in user_pending_confirmation:
         del user_pending_confirmation[uid]
         await update.message.reply_text("❌ *Đã hủy giao dịch mua hàng.*", parse_mode="Markdown")
@@ -577,7 +652,6 @@ async def cmd_baotri(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🛠️ *BẢNG ĐIỀU KHIỂN BẢO TRÌ SẢN PHẨM*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def cmd_donhang(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Xem danh sách đơn hàng đang chờ duyệt"""
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Bạn không có quyền!")
         return
@@ -593,15 +667,9 @@ async def cmd_donhang(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"🆔 `{order_id}`\n"
         msg += f"👤 {order['user_name']} (@{order['username'] or 'no username'})\n"
         msg += f"🎮 {order['display']} - TK: `{order['account_name']}`\n"
-        msg += f"💰 {PRICE_STR}\n"
-        msg += f"✅ /approve_{order_id}\n"
-        msg += f"❌ /reject_{order_id} <lý do>\n───────────────────\n"
+        msg += f"💰 {PRICE_STR}\n───────────────────\n"
     
-    if len(msg) > 4000:
-        for chunk in [msg[i:i+4000] for i in range(0, len(msg), 4000)]:
-            await update.message.reply_text(chunk, parse_mode="Markdown")
-    else:
-        await update.message.reply_text(msg, parse_mode="Markdown")
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def cmd_tong(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -688,17 +756,11 @@ def main():
     application.add_handler(CommandHandler("donhang", cmd_donhang))
     application.add_handler(CommandHandler("cancel", handle_cancel))
     
-    # Xử lý callback query (nút bấm inline) - ĐẶT TRƯỚC
+    # Xử lý callback query (nút bấm)
     application.add_handler(CallbackQueryHandler(handle_callback))
     
-    # Xử lý lệnh duyệt/từ chối đơn hàng (chỉ lắng nghe lệnh bắt đầu bằng /approve_ hoặc /reject_)
-    application.add_handler(MessageHandler(filters.Regex(r'^/(approve_|reject_)'), handle_admin_action))
-    
-    # Xử lý nhập code từ admin (bất kỳ text nào khi đang trong trạng thái pending_approve)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_code_input), group=1)
-    
-    # Xử lý tin nhắn text thông thường (ĐẶT SAU CÙNG, group=2)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message), group=2)
+    # Xử lý tin nhắn text
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     logging.info("Bot đang chạy...")
     application.run_polling()
