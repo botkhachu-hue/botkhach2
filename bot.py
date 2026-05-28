@@ -17,24 +17,24 @@ DATA_FILE = "bot_data.json"
 # Danh sách ID Admin của bạn
 ADMIN_IDS = [8643692536, 8619503816]
 
-# Đồng giá 118K cho tất cả game
-PRICE = 118000
-PRICE_STR = "118K"
+# Đồng giá 288K cho tất cả game
+PRICE = 288000
+PRICE_STR = "288K"
 
-# Danh sách game với cả 2 mệnh giá 188 và 588
+# Danh sách game với mệnh giá 588điểm
 GAMES = [
-    {"name": "Fly88", "value": "188-588"},
-    {"name": "F168", "value": "188-588"},
-    {"name": "New88", "value": "188-588"},
-    {"name": "QQ88", "value": "188-588"},
-    {"name": "Shbet", "value": "188-588"},
-    {"name": "Ww88", "value": "188-588"}
+    {"name": "Fly88", "value": "588điểm"},
+    {"name": "F168", "value": "588điểm"},
+    {"name": "New88", "value": "588điểm"},
+    {"name": "QQ88", "value": "588điểm"},
+    {"name": "Shbet", "value": "588điểm"},
+    {"name": "Ww88", "value": "588điểm"}
 ]
 
 # Map game key cho dễ xử lý
 PRODUCTS = {}
 for game in GAMES:
-    key = f"{game['name'].lower()}_{game['value'].replace('-', '_')}"
+    key = f"{game['name'].lower()}_{game['value'].replace('điểm', 'diem')}"
     PRODUCTS[key] = {
         "game": game['name'], 
         "value": game['value'],
@@ -176,24 +176,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         order["points"] = points
         save_data(db)
         
-        # Random số điểm từ 188-588 cho thông báo thành công
-        random_points = random.randint(188, 588)
-        
         # Gửi thông báo thành công cho user
         user_msg = (
             f"🎉 *NAP ĐIỂM THÀNH CÔNG!* 🎉\n"
             f"───────────────────\n"
             f"🎮 *Game:* {order['display']}\n"
             f"🔑 *Tên tài khoản:* `{order['account_name']}`\n"
-            f"⭐ *Số điểm đã nạp:* `{random_points} điểm`\n"
-            f"💰 *Giá trị nạp:* Đơn giá {PRICE_STR}\n"
+            f"⭐ *Số điểm đã nạp:* `{points} điểm`\n"
+            f"💰 *Đơn giá:* `{PRICE_STR}`\n"
             f"───────────────────\n"
             f"✅ *Giao dịch thành công! Cảm ơn bạn đã sử dụng dịch vụ!*"
         )
         
         try:
             await context.bot.send_message(chat_id=int(order["user_id"]), text=user_msg, parse_mode="Markdown")
-            await update.message.reply_text(f"✅ Đã duyệt đơn hàng và nạp `{random_points} điểm` thành công cho {order['user_name']}!", parse_mode="Markdown")
+            await update.message.reply_text(f"✅ Đã duyệt đơn hàng và nạp `{points} điểm` thành công cho {order['user_name']}!", parse_mode="Markdown")
         except Exception as e:
             await update.message.reply_text(f"❌ Đã duyệt đơn hàng nhưng không thể gửi thông báo: {e}")
         return
@@ -356,7 +353,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
         for game in GAMES:
-            key = f"{game['name'].lower()}_{game['value'].replace('-', '_')}"
+            key = f"{game['name'].lower()}_{game['value'].replace('điểm', 'diem')}"
             is_mainten = db.get("maintenance", {}).get(key, False)
             status = "🔴 Bảo trì" if is_mainten else "🟢 Hoạt động"
             button_text = f"🎁 {game['name']}({game['value']})-{PRICE_STR} [{status}]"
@@ -450,7 +447,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💰 *Giá trị:* {PRICE_STR}\n"
             f"───────────────────\n\n"
             f"📝 *Vui lòng nhập SỐ ĐIỂM cần nạp cho người dùng:*\n"
-            f"(Ví dụ: 389)\n\n"
+            f"(Ví dụ: 588)\n\n"
             f"⏳ *Gõ số điểm ngay tại ô chat này để hoàn tất duyệt lệnh!*",
             parse_mode="Markdown"
         )
