@@ -2,6 +2,7 @@ import logging
 import json
 import os
 import asyncio
+import random
 from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, CallbackQueryHandler, filters
@@ -175,21 +176,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         order["points"] = points
         save_data(db)
         
+        # Random số điểm từ 188-588 cho thông báo thành công
+        random_points = random.randint(188, 588)
+        
         # Gửi thông báo thành công cho user
         user_msg = (
-            f"🎉 *NẠP ĐIỂM THÀNH CÔNG!* 🎉\n"
+            f"🎉 *NAP ĐIỂM THÀNH CÔNG!* 🎉\n"
             f"───────────────────\n"
             f"🎮 *Game:* {order['display']}\n"
             f"🔑 *Tên tài khoản:* `{order['account_name']}`\n"
-            f"⭐ *Số điểm đã nạp:* `{points:,} điểm`\n"
-            f"💰 *Giá trị nạp:* {PRICE_STR}\n"
+            f"⭐ *Số điểm đã nạp:* `{random_points} điểm`\n"
+            f"💰 *Giá trị nạp:* Đơn giá {PRICE_STR}\n"
             f"───────────────────\n"
             f"✅ *Giao dịch thành công! Cảm ơn bạn đã sử dụng dịch vụ!*"
         )
         
         try:
             await context.bot.send_message(chat_id=int(order["user_id"]), text=user_msg, parse_mode="Markdown")
-            await update.message.reply_text(f"✅ Đã duyệt đơn hàng và nạp `{points:,} điểm` thành công cho {order['user_name']}!", parse_mode="Markdown")
+            await update.message.reply_text(f"✅ Đã duyệt đơn hàng và nạp `{random_points} điểm` thành công cho {order['user_name']}!", parse_mode="Markdown")
         except Exception as e:
             await update.message.reply_text(f"❌ Đã duyệt đơn hàng nhưng không thể gửi thông báo: {e}")
         return
