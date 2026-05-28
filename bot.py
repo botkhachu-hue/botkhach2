@@ -127,8 +127,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💰 *Giá:* {PRICE_STR}\n"
             f"⏰ *Thời gian:* {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n"
             f"───────────────────\n"
-            f"✅ /duyet_{order_id} - Duyệt đơn\n"
-            f"❌ /huy_{order_id} - Từ chối"
+            f"✅ /approve_{order_id} - Duyệt đơn\n"
+            f"❌ /reject_{order_id} <lý do> - Từ chối"
         )
         
         for admin_id in ADMIN_IDS:
@@ -242,6 +242,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Xử lý bảo trì (admin)
     if data.startswith("mt_"):
         if user_id not in ADMIN_IDS:
+            await query.answer("Bạn không có quyền!", show_alert=True)
             return
         game_key = data.replace("mt_", "")
         if game_key in db["maintenance"]:
@@ -305,12 +306,51 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMIN_IDS:
-        await update.message.reply_text("❌ Bạn không có quyền sử dụng lệnh này!")
         return
     
     text = update.message.text.strip()
     
-    # Xử lý lệnh từ chối có lý do
+    # Xử lý lệnh duyệt
+    if text.startswith("/approve_"):
+        order_id = text.replace("/approve_", "").strip()
+        
+        if order_id not in db["pending_orders"]:
+            await update.message.reply_text("❌ Không tìm thấy đơn hàng!")
+            return
+        
+        order = db["pending_orders"][order_id]
+        if order["status"] != "pending":
+            await update.message.reply_text(f"❌ Đơn hàng này đã được {order['status']} rồi!")
+            return
+        
+        game_key = order["game"].lower()
+        prod = PRODUCTS[game_key]
+        
+        u_info = db["users"].get(order["user_id"])
+        if not u_info:
+            await update.message.reply_text("❌ Không tìm thấy thông tin người dùng!")
+            return
+        
+        if u_info["balance"] < prod["price"]:
+            await update.message.reply_text(
+                f"❌ Số dư của user không đủ! Ví có {u_info['balance']:,} VNĐ, cần {prod['price']:,} VNĐ.\n"
+                f"Vui lòng yêu cầu user nạp thêm tiền trước khi duyệt."
+            )
+            return
+        
+        context.user_data["pending_approve"] = order_id
+        await update.message.reply_text(
+            f"✅ *Đang duyệt đơn hàng:* `{order_id}`\n"
+            f"🎮 *Game:* {order['game']}\n"
+            f"🔑 *Tên tài khoản:* `{order['account_name']}`\n"
+            f"💰 *Giá:* {PRICE_STR}\n\n"
+            f"📝 *Vui lòng nhập MÃ CODE để gửi cho người dùng:*\n"
+            f"(Nhập /cancel để hủy)",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # Xử lý lệnh từ chối
     if text.startswith("/reject_"):
         parts = text.split(" ", 1)
         if len(parts) < 2:
@@ -329,14 +369,12 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text(f"❌ Đơn hàng này đã được {order['status']} rồi!")
             return
         
-        # Cập nhật trạng thái
         order["status"] = "rejected"
         order["reason"] = reason
         order["rejected_at"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         order["rejected_by"] = user_id
         save_data(db)
         
-        # Gửi thông báo từ chối cho user
         user_msg = (
             f"❌ *YÊU CẦU MUA CODE BỊ TỪ CHỐI*\n"
             f"───────────────────\n"
@@ -354,50 +392,6 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text(f"✅ Đã từ chối đơn hàng `{order_id}` và thông báo lý do đến người dùng!", parse_mode="Markdown")
         except Exception as e:
             await update.message.reply_text(f"❌ Đã từ chối đơn hàng nhưng không thể gửi thông báo: {e}")
-        
-        return
-    
-    # Xử lý lệnh duyệt
-    if text.startswith("/approve_"):
-        order_id = text.replace("/approve_", "").strip()
-        
-        if order_id not in db["pending_orders"]:
-            await update.message.reply_text("❌ Không tìm thấy đơn hàng!")
-            return
-        
-        order = db["pending_orders"][order_id]
-        if order["status"] != "pending":
-            await update.message.reply_text(f"❌ Đơn hàng này đã được {order['status']} rồi!")
-            return
-        
-        game_key = order["game"].lower()
-        prod = PRODUCTS[game_key]
-        
-        # Lấy thông tin user
-        u_info = db["users"].get(order["user_id"])
-        if not u_info:
-            await update.message.reply_text("❌ Không tìm thấy thông tin người dùng!")
-            return
-        
-        # Kiểm tra số dư lần nữa (phòng trường hợp user đã tiêu tiền lúc chờ)
-        if u_info["balance"] < prod["price"]:
-            await update.message.reply_text(
-                f"❌ Số dư của user không đủ! Ví có {u_info['balance']:,} VNĐ, cần {prod['price']:,} VNĐ.\n"
-                f"Vui lòng yêu cầu user nạp thêm tiền trước khi duyệt."
-            )
-            return
-        
-        # Yêu cầu admin nhập code để gửi
-        context.user_data["pending_approve"] = order_id
-        await update.message.reply_text(
-            f"✅ *Đang duyệt đơn hàng:* `{order_id}`\n"
-            f"🎮 *Game:* {order['game']}\n"
-            f"🔑 *Tên tài khoản:* `{order['account_name']}`\n"
-            f"💰 *Giá:* {PRICE_STR}\n\n"
-            f"📝 *Vui lòng nhập MÃ CODE để gửi cho người dùng:*\n"
-            f"(Nhập /cancel để hủy)",
-            parse_mode="Markdown"
-        )
         return
 
 # Xử lý nhập code từ admin
@@ -432,7 +426,6 @@ async def handle_admin_code_input(update: Update, context: ContextTypes.DEFAULT_
     game_key = order["game"].lower()
     prod = PRODUCTS[game_key]
     
-    # Trừ tiền user
     u_info = db["users"].get(order["user_id"])
     if not u_info:
         await update.message.reply_text("❌ Không tìm thấy người dùng!")
@@ -442,14 +435,12 @@ async def handle_admin_code_input(update: Update, context: ContextTypes.DEFAULT_
     time_now = datetime.now().strftime("%d/%m %H:%M")
     u_info["history"].append(f"[{time_now}] Mua {order['game']} (-{PRICE_STR}) - TK: {order['account_name']}")
     
-    # Cập nhật đơn hàng
     order["status"] = "approved"
     order["approved_at"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     order["approved_by"] = user_id
     order["code"] = code
     save_data(db)
     
-    # Gửi code cho user
     user_msg = (
         f"🎉 *MUA HÀNG THÀNH CÔNG!* 🎉\n"
         f"───────────────────\n"
@@ -586,6 +577,7 @@ def main():
     TOKEN = "8960587351:AAEe0E5gUXYoZ_G864q4ek7Duu4S3foD07g"
     application = Application.builder().token(TOKEN).build()
     
+    # Command handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("baotri", cmd_baotri))
     application.add_handler(CommandHandler("tong", cmd_tong))
@@ -593,13 +585,17 @@ def main():
     application.add_handler(CommandHandler("thongbao", cmd_thongbao))
     application.add_handler(CommandHandler("donhang", cmd_donhang))
     
-    # Xử lý lệnh duyệt/từ chối đơn hàng
+    # Xử lý lệnh duyệt/từ chối đơn hàng (phải đặt TRƯỚC MessageHandler thông thường)
     application.add_handler(MessageHandler(filters.Regex(r'^/(approve_|reject_)'), handle_admin_action))
-    # Xử lý nhập code từ admin
+    
+    # Xử lý nhập code từ admin (phải đặt TRƯỚC MessageHandler thông thường)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_code_input))
     
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    # Xử lý callback query (nút bấm inline)
     application.add_handler(CallbackQueryHandler(handle_callback))
+    
+    # Xử lý tin nhắn text thông thường (ĐẶT SAU CÙNG)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     logging.info("Bot đang chạy...")
     application.run_polling()
