@@ -20,13 +20,27 @@ ADMIN_IDS = [8643692536, 8619503816]
 PRICE = 118000
 PRICE_STR = "118K"
 
-# Danh sách game (chỉ còn tên game, không còn phân biệt 188/588)
-GAMES = ["Fly88", "F168", "New88", "QQ88", "Shbet", "Ww88"]
+# Danh sách game với cả 2 mệnh giá 188 và 588
+GAMES = [
+    {"name": "Fly88", "value": "188-588"},
+    {"name": "F168", "value": "188-588"},
+    {"name": "New88", "value": "188-588"},
+    {"name": "QQ88", "value": "188-588"},
+    {"name": "Shbet", "value": "188-588"},
+    {"name": "Ww88", "value": "188-588"}
+]
 
 # Map game key cho dễ xử lý
 PRODUCTS = {}
 for game in GAMES:
-    PRODUCTS[game.lower()] = {"game": game, "price": PRICE, "price_str": PRICE_STR}
+    key = f"{game['name'].lower()}_{game['value'].replace('-', '_')}"
+    PRODUCTS[key] = {
+        "game": game['name'], 
+        "value": game['value'],
+        "display": f"{game['name']}({game['value']})",
+        "price": PRICE, 
+        "price_str": PRICE_STR
+    }
 
 # Khởi tạo hoặc đọc dữ liệu từ file JSON
 def load_data():
@@ -96,9 +110,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(user_id)
     init_user(user_id, update.effective_user.username, update.effective_user.first_name)
 
+    logging.info(f"User {user_id} gửi: {text}")
+
     # Kiểm tra xem user có đang chờ nhập tên tài khoản không
     if uid in user_waiting_for_account:
-        game_name = user_waiting_for_account[uid]
+        game_info = user_waiting_for_account[uid]
+        game_name = game_info["game"]
+        game_value = game_info["value"]
         account_name = text.strip()
         del user_waiting_for_account[uid]
         
@@ -109,6 +127,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "user_name": update.effective_user.first_name,
             "username": update.effective_user.username,
             "game": game_name,
+            "value": game_value,
+            "display": f"{game_name}({game_value})",
             "account_name": account_name,
             "status": "pending",
             "created_at": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
@@ -122,7 +142,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🆔 *Order ID:* `{order_id}`\n"
             f"👤 *Người dùng:* {update.effective_user.first_name}\n"
             f"📝 *Username:* @{update.effective_user.username or 'Không có'}\n"
-            f"🎮 *Game:* {game_name}\n"
+            f"🎮 *Game:* {game_name}({game_value})\n"
             f"🔑 *Tên tài khoản:* `{account_name}`\n"
             f"💰 *Giá:* {PRICE_STR}\n"
             f"⏰ *Thời gian:* {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n"
@@ -138,7 +158,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logging.error(f"Không thể gửi tin nhắn đến admin {admin_id}: {e}")
         
         await update.message.reply_text(
-            f"✅ *Đã gửi yêu cầu mua code {game_name} đến Admin!*\n\n"
+            f"✅ *Đã gửi yêu cầu mua code {game_name}({game_value}) đến Admin!*\n\n"
             f"🔑 *Tên tài khoản:* `{account_name}`\n"
             f"💰 *Giá:* {PRICE_STR}\n\n"
             f"⏳ Vui lòng chờ Admin duyệt đơn hàng. Bạn sẽ nhận được code sau khi được duyệt!",
@@ -192,13 +212,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👉 Chọn game cần mua code:"
         )
         
-        # Tạo nút cho từng game với giá 118K
+        # Tạo nút cho từng game với tên game(188-588)-118K
         row_buttons = []
         for i, game in enumerate(GAMES):
-            is_mainten = db.get("maintenance", {}).get(game.lower(), False)
+            key = f"{game['name'].lower()}_{game['value'].replace('-', '_')}"
+            is_mainten = db.get("maintenance", {}).get(key, False)
             status = "🔴 Bảo trì" if is_mainten else "🟢 Còn code"
-            button_text = f"🎁 {game} - {PRICE_STR} [{status}]"
-            row_buttons.append(InlineKeyboardButton(button_text, callback_data=f"buy_{game.lower()}"))
+            # Hiển thị: Fly88(188-588)-118K [Còn code]
+            button_text = f"🎁 {game['name']}({game['value']})-{PRICE_STR} [{status}]"
+            row_buttons.append(InlineKeyboardButton(button_text, callback_data=f"buy_{key}"))
             
             # Mỗi hàng 2 nút
             if len(row_buttons) == 2 or i == len(GAMES) - 1:
@@ -239,6 +261,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(user_id)
     data = query.data
 
+    logging.info(f"Callback từ user {user_id}: {data}")
+
     # Xử lý bảo trì (admin)
     if data.startswith("mt_"):
         if user_id not in ADMIN_IDS:
@@ -253,7 +277,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for key, prod in PRODUCTS.items():
                 status = "🔴 OFF" if db["maintenance"].get(key, False) else "🟢 ON"
                 keyboard.append([
-                    InlineKeyboardButton(prod["game"], callback_data="none"),
+                    InlineKeyboardButton(prod["display"], callback_data="none"),
                     InlineKeyboardButton(status, callback_data=f"mt_{key}")
                 ])
             try:
@@ -273,7 +297,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if db.get("maintenance", {}).get(game_key, False):
             await query.edit_message_text(
-                text=f"⚠️ Game *{prod['game']}* đang bảo trì. Vui lòng chọn game khác!",
+                text=f"⚠️ Game *{prod['display']}* đang bảo trì. Vui lòng chọn game khác!",
                 parse_mode="Markdown"
             )
             return
@@ -292,9 +316,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         # Yêu cầu nhập tên tài khoản
-        user_waiting_for_account[uid] = prod["game"]
+        user_waiting_for_account[uid] = {
+            "game": prod["game"],
+            "value": prod["value"]
+        }
         await query.edit_message_text(
-            text=f"🎮 *Game:* {prod['game']}\n"
+            text=f"🎮 *Game:* {prod['display']}\n"
                  f"💰 *Giá tiền:* `{prod['price_str']}` ({prod['price']:,} VNĐ)\n\n"
                  f"📝 *Vui lòng nhập TÊN TÀI KHOẢN game của bạn:*\n"
                  f"(Admin sẽ gửi code vào tài khoản này sau khi duyệt)\n\n"
@@ -309,6 +336,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     
     text = update.message.text.strip()
+    logging.info(f"Admin action từ {user_id}: {text}")
     
     # Xử lý lệnh duyệt
     if text.startswith("/approve_"):
@@ -323,7 +351,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text(f"❌ Đơn hàng này đã được {order['status']} rồi!")
             return
         
-        game_key = order["game"].lower()
+        game_key = f"{order['game'].lower()}_{order['value'].replace('-', '_')}"
         prod = PRODUCTS[game_key]
         
         u_info = db["users"].get(order["user_id"])
@@ -341,7 +369,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         context.user_data["pending_approve"] = order_id
         await update.message.reply_text(
             f"✅ *Đang duyệt đơn hàng:* `{order_id}`\n"
-            f"🎮 *Game:* {order['game']}\n"
+            f"🎮 *Game:* {order['display']}\n"
             f"🔑 *Tên tài khoản:* `{order['account_name']}`\n"
             f"💰 *Giá:* {PRICE_STR}\n\n"
             f"📝 *Vui lòng nhập MÃ CODE để gửi cho người dùng:*\n"
@@ -378,7 +406,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         user_msg = (
             f"❌ *YÊU CẦU MUA CODE BỊ TỪ CHỐI*\n"
             f"───────────────────\n"
-            f"🎮 *Game:* {order['game']}\n"
+            f"🎮 *Game:* {order['display']}\n"
             f"🔑 *Tên tài khoản:* `{order['account_name']}`\n"
             f"💰 *Giá:* {PRICE_STR}\n"
             f"───────────────────\n"
@@ -423,7 +451,7 @@ async def handle_admin_code_input(update: Update, context: ContextTypes.DEFAULT_
         return
     
     code = text
-    game_key = order["game"].lower()
+    game_key = f"{order['game'].lower()}_{order['value'].replace('-', '_')}"
     prod = PRODUCTS[game_key]
     
     u_info = db["users"].get(order["user_id"])
@@ -433,7 +461,7 @@ async def handle_admin_code_input(update: Update, context: ContextTypes.DEFAULT_
     
     u_info["balance"] -= prod["price"]
     time_now = datetime.now().strftime("%d/%m %H:%M")
-    u_info["history"].append(f"[{time_now}] Mua {order['game']} (-{PRICE_STR}) - TK: {order['account_name']}")
+    u_info["history"].append(f"[{time_now}] Mua {order['display']} (-{PRICE_STR}) - TK: {order['account_name']}")
     
     order["status"] = "approved"
     order["approved_at"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
@@ -444,7 +472,7 @@ async def handle_admin_code_input(update: Update, context: ContextTypes.DEFAULT_
     user_msg = (
         f"🎉 *MUA HÀNG THÀNH CÔNG!* 🎉\n"
         f"───────────────────\n"
-        f"🎮 *Game:* {order['game']}\n"
+        f"🎮 *Game:* {order['display']}\n"
         f"🔑 *Tên tài khoản:* `{order['account_name']}`\n"
         f"🔐 *Mã Code:* `{code}`\n"
         f"💰 *Số dư ví còn lại:* `{u_info['balance']:,} VNĐ`\n"
@@ -469,7 +497,7 @@ async def cmd_baotri(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for key, prod in PRODUCTS.items():
         status = "🔴 OFF" if db["maintenance"].get(key, False) else "🟢 ON"
         keyboard.append([
-            InlineKeyboardButton(prod["game"], callback_data="none"),
+            InlineKeyboardButton(prod["display"], callback_data="none"),
             InlineKeyboardButton(status, callback_data=f"mt_{key}")
         ])
     await update.message.reply_text("🛠️ *BẢNG ĐIỀU KHIỂN BẢO TRÌ SẢN PHẨM*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -490,7 +518,7 @@ async def cmd_donhang(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for order_id, order in pending.items():
         msg += f"🆔 `{order_id}`\n"
         msg += f"👤 {order['user_name']} (@{order['username'] or 'no username'})\n"
-        msg += f"🎮 {order['game']} - TK: `{order['account_name']}`\n"
+        msg += f"🎮 {order['display']} - TK: `{order['account_name']}`\n"
         msg += f"💰 {PRICE_STR}\n"
         msg += f"✅ /approve_{order_id}\n"
         msg += f"❌ /reject_{order_id} <lý do>\n───────────────────\n"
@@ -585,17 +613,17 @@ def main():
     application.add_handler(CommandHandler("thongbao", cmd_thongbao))
     application.add_handler(CommandHandler("donhang", cmd_donhang))
     
-    # Xử lý lệnh duyệt/từ chối đơn hàng (phải đặt TRƯỚC MessageHandler thông thường)
-    application.add_handler(MessageHandler(filters.Regex(r'^/(approve_|reject_)'), handle_admin_action))
-    
-    # Xử lý nhập code từ admin (phải đặt TRƯỚC MessageHandler thông thường)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_code_input))
-    
-    # Xử lý callback query (nút bấm inline)
+    # Xử lý callback query (nút bấm inline) - ĐẶT TRƯỚC
     application.add_handler(CallbackQueryHandler(handle_callback))
     
-    # Xử lý tin nhắn text thông thường (ĐẶT SAU CÙNG)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    # Xử lý lệnh duyệt/từ chối đơn hàng (chỉ lắng nghe lệnh bắt đầu bằng /approve_ hoặc /reject_)
+    application.add_handler(MessageHandler(filters.Regex(r'^/(approve_|reject_)'), handle_admin_action))
+    
+    # Xử lý nhập code từ admin (bất kỳ text nào khi đang trong trạng thái pending_approve)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_code_input), group=1)
+    
+    # Xử lý tin nhắn text thông thường (ĐẶT SAU CÙNG, group=2)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message), group=2)
     
     logging.info("Bot đang chạy...")
     application.run_polling()
