@@ -21,14 +21,14 @@ ADMIN_IDS = [8643692536, 8619503816]
 PRICE = 288000
 PRICE_STR = "288K"
 
-# Danh sách game với mệnh giá 588điểm
+# Danh sách game MỚI với mệnh giá 588điểm
 GAMES = [
-    {"name": "Fly88", "value": "588điểm"},
-    {"name": "F168", "value": "588điểm"},
-    {"name": "New88", "value": "588điểm"},
-    {"name": "QQ88", "value": "588điểm"},
-    {"name": "Shbet", "value": "588điểm"},
-    {"name": "Ww88", "value": "588điểm"}
+    {"name": "99ok", "value": "588điểm"},
+    {"name": "33win", "value": "588điểm"},
+    {"name": "88vv", "value": "588điểm"},
+    {"name": "Kl99", "value": "588điểm"},
+    {"name": "Okking", "value": "588điểm"},
+    {"name": "79king", "value": "588điểm"}
 ]
 
 # Map game key cho dễ xử lý
@@ -82,7 +82,7 @@ def init_user(user_id, username, first_name):
         }
         save_data(db)
 
-# --- MENU CHÍNH (ĐÃ CẬP NHẬT KIỂU MỚI) ---
+# --- MENU CHÍNH ---
 def main_menu_keyboard():
     keyboard = [
         ["⚡ NẠP TIỀN", "🧑‍💻 TÀI KHOẢN"],
@@ -91,7 +91,7 @@ def main_menu_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# Lệnh /start với lời chào đã được cập nhật mới
+# Lệnh /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     init_user(user.id, user.username, user.first_name)
@@ -142,7 +142,7 @@ async def refund_user(uid, amount, game_display, context):
         if uid in timeout_tasks:
             del timeout_tasks[uid]
 
-# --- XỬ LÝ DI CHUYỂN MENU CHÍNH ---
+# --- XỬ LÝ MENU CHÍNH ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     user_id = update.effective_user.id
@@ -160,7 +160,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             points = int(text.strip())
         except ValueError:
             await update.message.reply_text("❌ Số điểm không hợp lệ! Vui lòng nhập một số nguyên.")
-            # Cho admin nhập lại
             admin_waiting_for_points[user_id] = order_id
             return
         
@@ -173,14 +172,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ Đơn hàng này đã được {order['status']} rồi!")
             return
         
-        # Cập nhật đơn hàng
         order["status"] = "approved"
         order["approved_at"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         order["approved_by"] = user_id
         order["points"] = points
         save_data(db)
         
-        # Gửi thông báo thành công cho user
         user_msg = (
             f"🎉 *NAP ĐIỂM THÀNH CÔNG!* 🎉\n"
             f"───────────────────\n"
@@ -214,7 +211,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ Đơn hàng này đã được {order['status']} rồi!")
             return
         
-        # HOÀN TIỀN CHO USER
         u_info = db["users"].get(order["user_id"])
         if u_info:
             u_info["balance"] += order["amount"]
@@ -275,7 +271,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         save_data(db)
         
-        # Gửi tin nhắn cho Admin kèm nút bấm
         admin_msg = (
             f"🆕 *YÊU CẦU NẠP ĐIỂM MỚI*\n"
             f"───────────────────\n"
@@ -311,7 +306,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # --- ĐÃ CẬP NHẬT ĐIỀU KIỆN TEXT TEXT KHỚP VỚI MENU MỚI ---
+    # --- CÁC TÙY CHỌN MENU CHÍNH ---
     if text == "⚡ NẠP TIỀN":
         bank_id = "MB"
         account_no = "0003456712345"
@@ -389,7 +384,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [[InlineKeyboardButton("💬 LIÊN HỆ ADMIN", url="https://t.me/cskhcodeminilive")]]
         await update.message.reply_text(support_msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# --- XỬ LÝ CALLBACK (NÚT BẤM CỦA ADMIN VÀ USER) ---
+# --- XỬ LÝ CALLBACK ---
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -423,7 +418,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
         return
 
-    # Xử lý ADMIN DUYỆT LỆNH (bấm nút)
+    # Xử lý ADMIN DUYỆT LỆNH
     if data.startswith("admin_approve_"):
         if user_id not in ADMIN_IDS:
             await query.answer("⚠️ Chỉ Admin mới có quyền này!", show_alert=True)
@@ -440,7 +435,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(f"❌ Đơn hàng này đã được {order['status']} rồi!")
             return
         
-        # Lưu trạng thái chờ admin nhập số điểm
         admin_waiting_for_points[user_id] = order_id
         
         await query.edit_message_text(
@@ -458,7 +452,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Xử lý ADMIN TỪ CHỐI LỆNH (bấm nút)
+    # Xử lý ADMIN TỪ CHỐI LỆNH
     if data.startswith("admin_reject_"):
         if user_id not in ADMIN_IDS:
             await query.answer("⚠️ Chỉ Admin mới có quyền này!", show_alert=True)
@@ -475,7 +469,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(f"❌ Đơn hàng này đã được {order['status']} rồi!")
             return
         
-        # Lưu trạng thái chờ admin nhập lý do
         admin_waiting_for_reason[user_id] = order_id
         
         await query.edit_message_text(
@@ -540,7 +533,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Xử lý xác nhận mua (trừ tiền ngay)
+    # Xử lý xác nhận mua
     if data.startswith("confirm_"):
         game_key = data.replace("confirm_", "")
         prod = PRODUCTS.get(game_key)
@@ -571,7 +564,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
-        # TRỪ TIỀN NGAY
         u_info["balance"] -= prod["price"]
         save_data(db)
         
@@ -580,7 +572,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "value": prod["value"]
         }
         
-        # Tạo timeout 5 phút
         task = asyncio.create_task(refund_user(uid, prod["price"], prod["display"], context))
         timeout_tasks[uid] = task
         
@@ -642,7 +633,7 @@ async def handle_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Không có giao dịch nào đang thực hiện để hủy.", parse_mode="Markdown")
 
-# --- CÁC HÀM QUẢN TRỊ ADMIN KHÁC ---
+# --- CÁC LỆNH ADMIN ---
 async def cmd_baotri(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS: 
         await update.message.reply_text("❌ Bạn không có quyền!")
@@ -748,12 +739,11 @@ async def cmd_thongbao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(f"📢 Đã gửi thông báo đến {count}/{len(db['users'])} người dùng!", parse_mode="Markdown")
 
-# --- HÀM CHẠY BOT CHÍNH ---
+# --- HÀM CHẠY BOT ---
 def main():
     TOKEN = "8627628503:AAFm4RPVqu43EwHuu2Rmx8yvCFaUDPIdujo"
     application = Application.builder().token(TOKEN).build()
     
-    # Command handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("baotri", cmd_baotri))
     application.add_handler(CommandHandler("tong", cmd_tong))
@@ -762,10 +752,7 @@ def main():
     application.add_handler(CommandHandler("donhang", cmd_donhang))
     application.add_handler(CommandHandler("cancel", handle_cancel))
     
-    # Xử lý callback query (nút bấm)
     application.add_handler(CallbackQueryHandler(handle_callback))
-    
-    # Xử lý tin nhắn text
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     logging.info("Bot đang chạy...")
