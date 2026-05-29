@@ -91,13 +91,17 @@ def main_menu_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
+# Lệnh /start với lời chào đã được cập nhật mới
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     init_user(user.id, user.username, user.first_name)
     
     welcome_text = (
         f"👑 *Chào mừng {user.first_name} đã đến với Hệ Thống Code Uy Tín!*\n\n"
-        "✨ Vui lòng chọn các tính năng bên dưới menu để bắt đầu giao dịch."
+        "🚀 Chuyên cung cấp code chất lượng, hỗ trợ tận tình, giao dịch nhanh gọn.\n"
+        "📌 Vui lòng chọn tính năng bên dưới để bắt đầu.\n\n"
+        "💬 *Nhóm hỗ trợ & bảo hành:* https://t.me/nghientrinhbayy\n"
+        "🔥 *Cảm ơn bạn đã tin tưởng đồng hành cùng hệ thống!*"
     )
     await update.message.reply_text(welcome_text, parse_mode="Markdown", reply_markup=main_menu_keyboard())
 
@@ -745,7 +749,7 @@ async def cmd_thongbao(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- HÀM CHẠY BOT CHÍNH ---
 def main():
-    # Token mới của bạn đã được cập nhật tại đây
+    # Token bot mới đã cập nhật thành công
     TOKEN = "8627628503:AAFm4RPVqu43EwHuu2Rmx8yvCFaUDPIdujo"
     application = Application.builder().token(TOKEN).build()
     
