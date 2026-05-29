@@ -7,6 +7,10 @@ from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, CallbackQueryHandler, filters
 import sys
+import imaplib
+import email
+from email.header import decode_header
+import re
 
 # Cấu hình log hệ thống
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -16,6 +20,11 @@ DATA_FILE = "bot_data.json"
 
 # Danh sách ID Admin của bạn
 ADMIN_IDS = [8643692536, 8619503816]
+
+# CẤU HÌNH THÔNG TIN EMAIL VÀ NGÂN HÀNG QUÉT TỰ ĐỘNG
+EMAIL_USER = "tienphongtx@gmail.com"
+EMAIL_PASS = "ykbphysfymmjjtlw"
+IMAP_SERVER = "imap.gmail.com"
 
 # Giá chung 200K cho tất cả game
 PRICE = 200000
@@ -265,12 +274,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # MENU CHÍNH
     if text == "💳 NẠP TIỀN":
-        qr_url = f"https://img.vietqr.io/image/MB-0003456712345-print.jpg?addInfo={user_id}&accountName=LY%20THI%20CHAM"
+        # Cập nhật QR và Thông tin sang Vietcombank
+        qr_url = f"https://img.vietqr.io/image/VCB-1068030340-print.jpg?addInfo={user_id}&accountName=BAN%20TIEN%20PHONG"
         msg = (
             "🏦 *HỆ THỐNG NẠP TIỀN TỰ ĐỘNG*\n▬▬▬▬▬▬▬▬▬▬▬▬\n"
-            "📌 *Ngân hàng:* MBBANK\n📌 *STK:* `0003456712345`\n📌 *Chủ TK:* LY THI CHAM\n"
+            "📌 *Ngân hàng:* VIETCOMBANK (VCB)\n📌 *STK:* `1068030340`\n📌 *Chủ TK:* BAN TIEN PHONG\n"
             f"📌 *Nội dung:* `{user_id}`\n▬▬▬▬▬▬▬▬▬▬▬▬\n"
-            "📸 *Quét mã QR để chuyển khoản!*"
+            "⚠️ *LƯU Ý:* Nhập chính xác mã ID nội dung để được cộng tiền tự động sau 10 giây!\n"
+            "📸 *Quét mã QR để chuyển khoản nhanh!*"
         )
         try:
             await update.message.reply_photo(photo=qr_url, caption=msg, parse_mode="Markdown")
@@ -307,7 +318,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=keyboard)
 
     elif text == "🛍️ MUA HÀNG":
-        # LAYOUT NGANG 2 CỘT SANG TRỌNG
         keyboard = []
         row = []
         for i, game in enumerate(GAMES):
@@ -581,10 +591,91 @@ async def cmd_thongbao(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
     await update.message.reply_text(f"✅ Đã gửi đến {count}/{len(db['users'])} người!")
 
+# --- HÀM QUÉT EMAIL NẠP TIỀN TỰ ĐỘNG ---
+async def check_email_deposits(context: ContextTypes.DEFAULT_TYPE):
+    """Hàm chạy ngầm tự động quét email để nạp tiền từ Vietcombank"""
+    try:
+        mail = imaplib.IMAP4_SSL(IMAP_SERVER)
+        mail.login(EMAIL_USER, EMAIL_PASS)
+        mail.select("inbox")
+
+        # Quét các Email CHƯA ĐỌC từ Vietcombank gửi về
+        status, messages = mail.search(None, 'UNSEEN FROM "vcbnews@vietcombank.com.vn"')
+        if status != "OK":
+            return
+
+        for num in messages[0].split():
+            status, data = mail.fetch(num, "(RFC822)")
+            if status != "OK":
+                continue
+                
+            raw_email = data[0][1]
+            msg = email.message_from_bytes(raw_email)
+            
+            body = ""
+            if msg.is_multipart():
+                for part in msg.walk():
+                    content_type = part.get_content_type()
+                    content_disposition = str(part.get("Content-Disposition"))
+                    if content_type == "text/plain" and "attachment" not in content_disposition:
+                        body = part.get_payload(decode=True).decode("utf-8", errors="ignore")
+                        break
+            else:
+                body = msg.get_payload(decode=True).decode("utf-8", errors="ignore")
+
+            if not body:
+                continue
+
+            # Đánh dấu email đã xử lý
+            mail.store(num, "+FLAGS", "\\Seen")
+
+            # REGEX LỌC SỐ TIỀN VÀ NỘI DUNG CHUYỂN KHOẢN (ID TELEGRAM) CỦA VCB
+            # Bắt dạng: +100,000 VND hoặc +50.000 VND hoặc +200000VND
+            amount_match = re.search(r"\+([0-9,.]+)\s*(?:VND|đ|VND\.)", body, re.IGNORECASE)
+            # Bắt ID người dùng (chuỗi số liên tiếp từ 8 đến 11 ký tự)
+            user_id_match = re.search(r"\b([0-9]{8,11})\b", body)
+
+            if amount_match and user_id_match:
+                amount_str = amount_match.group(1).replace(",", "").replace(".", "")
+                amount = int(amount_str)
+                target_uid = user_id_match.group(1)
+
+                current_db = load_data()
+                if target_uid in current_db["users"]:
+                    current_db["users"][target_uid]["balance"] += amount
+                    log_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                    current_db["users"][target_uid]["history"].append(f"{log_time}: Nạp tự động +{amount:,} VNĐ qua VCB")
+                    save_data(current_db)
+                    
+                    global db
+                    db = current_db
+
+                    success_msg = (
+                        f"💳 *THÔNG BÁO NẠP TIỀN TỰ ĐỘNG*\n▬▬▬▬▬▬▬▬▬▬▬▬\n"
+                        f"✅ Hệ thống đã nhận được tiền của bạn!\n"
+                        f"💰 Số tiền: `+{amount:,} VNĐ`\n"
+                        f"💳 Số dư hiện tại: `{db['users'][target_uid]['balance']:,} VNĐ`\n▬▬▬▬▬▬▬▬▬▬▬▬\n"
+                        f"✨ Cảm ơn bạn đã sử dụng dịch vụ!"
+                    )
+                    try:
+                        await context.bot.send_message(chat_id=int(target_uid), text=success_msg, parse_mode="Markdown")
+                        logging.info(f"Đã nạp tự động thành công {amount} VNĐ cho UID: {target_uid}")
+                    except Exception as e:
+                        logging.error(f"Không thể gửi tin nhắn cho user {target_uid}: {e}")
+                        
+        mail.close()
+        mail.logout()
+    except Exception as e:
+        logging.error(f"Lỗi trong quá trình quét Email nạp tiền: {e}")
+
 # --- CHẠY BOT ---
 def main():
     TOKEN = "8627628503:AAFm4RPVqu43EwHuu2Rmx8yvCFaUDPIdujo"
     application = Application.builder().token(TOKEN).build()
+    
+    # Cấu hình tự động quét email mỗi 30 giây để kiểm tra giao dịch
+    job_queue = application.job_queue
+    job_queue.run_repeating(check_email_deposits, interval=30, first=10)
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("baotri", cmd_baotri))
@@ -597,7 +688,7 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    logging.info("Bot đang chạy...")
+    logging.info("Bot đang chạy kèm tính năng tự động quét Email...")
     application.run_polling()
 
 if __name__ == "__main__":
