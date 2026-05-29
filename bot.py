@@ -21,14 +21,16 @@ ADMIN_IDS = [8643692536, 8619503816]
 PRICE = 288000
 PRICE_STR = "288K"
 
-# Danh sách game MỚI với mệnh giá 588điểm
+# Danh sách game với mệnh giá 588điểm - ĐÃ THÊM ww88 VÀ fly88
 GAMES = [
     {"name": "99ok", "value": "588điểm"},
     {"name": "33win", "value": "588điểm"},
     {"name": "88vv", "value": "588điểm"},
     {"name": "Kl99", "value": "588điểm"},
     {"name": "Okking", "value": "588điểm"},
-    {"name": "79king", "value": "588điểm"}
+    {"name": "79king", "value": "588điểm"},
+    {"name": "ww88", "value": "588điểm"},
+    {"name": "fly88", "value": "588điểm"}
 ]
 
 # Map game key cho dễ xử lý
@@ -91,7 +93,7 @@ def main_menu_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# Lệnh /start
+# Lệnh /start với lời chào
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     init_user(user.id, user.username, user.first_name)
