@@ -82,12 +82,12 @@ def init_user(user_id, username, first_name):
         }
         save_data(db)
 
-# --- MENU CHÍNH ---
+# --- MENU CHÍNH (ĐÃ CẬP NHẬT KIỂU MỚI) ---
 def main_menu_keyboard():
     keyboard = [
-        ["💳 NẠP TIỀN", "👤 TÀI KHOẢN"],
-        ["🛒 MUA HÀNG", "📜 LỊCH SỬ"],
-        ["☎️ HỖ TRỢ"]
+        ["⚡ NẠP TIỀN", "🧑‍💻 TÀI KHOẢN"],
+        ["🛍️ KHO CODE", "📦 ĐƠN HÀNG"],
+        ["🔥 HỖ TRỢ ADMIN"]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -311,7 +311,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if text == "💳 NẠP TIỀN":
+    # --- ĐÃ CẬP NHẬT ĐIỀU KIỆN TEXT TEXT KHỚP VỚI MENU MỚI ---
+    if text == "⚡ NẠP TIỀN":
         bank_id = "MB"
         account_no = "0003456712345"
         template = "print"
@@ -334,7 +335,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logging.error(f"Lỗi gửi QR: {e}")
             await update.message.reply_text(msg, parse_mode="Markdown")
 
-    elif text == "👤 TÀI KHOẢN":
+    elif text == "🧑‍💻 TÀI KHOẢN":
         u_info = db["users"][uid]
         msg = (
             "👑 *THÔNG TIN TÀI KHOẢN* 👑\n"
@@ -348,7 +349,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await update.message.reply_text(msg, parse_mode="Markdown")
 
-    elif text == "🛒 MUA HÀNG":
+    elif text == "🛍️ KHO CODE":
         keyboard = []
         msg_header = (
             "🛒 *DANH SÁCH GAME*\n"
@@ -366,10 +367,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(msg_header, parse_mode="Markdown", reply_markup=reply_markup)
 
-    elif text == "📜 LỊCH SỬ":
+    elif text == "📦 ĐƠN HÀNG":
         history = db["users"][uid].get("history", [])
         if not history:
-            await update.message.reply_text("❌ Bạn chưa có lịch sử giao dịch nào.")
+            await update.message.reply_text("❌ Bạn chưa có lịch sử đơn hàng nào.")
             return
         
         msg = "📜 *LỊCH SỬ GIAO DỊCH GẦN ĐÂY*\n"
@@ -378,7 +379,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg += f"▪️ {item}\n"
         await update.message.reply_text(msg, parse_mode="Markdown")
 
-    elif text == "☎️ HỖ TRỢ":
+    elif text == "🔥 HỖ TRỢ ADMIN":
         support_msg = (
             "☎️ *TRUNG TÂM CHĂM SÓC KHÁCH HÀNG*\n"
             "───────────────────────────\n"
@@ -749,7 +750,6 @@ async def cmd_thongbao(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- HÀM CHẠY BOT CHÍNH ---
 def main():
-    # Token bot mới đã cập nhật thành công
     TOKEN = "8627628503:AAFm4RPVqu43EwHuu2Rmx8yvCFaUDPIdujo"
     application = Application.builder().token(TOKEN).build()
     
