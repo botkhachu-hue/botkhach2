@@ -745,7 +745,8 @@ async def cmd_thongbao(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- HÀM CHẠY BOT CHÍNH ---
 def main():
-    TOKEN = "8960587351:AAEe0E5gUXYoZ_G864q4ek7Duu4S3foD07g"
+    # Token mới của bạn đã được cập nhật tại đây
+    TOKEN = "8627628503:AAFm4RPVqu43EwHuu2Rmx8yvCFaUDPIdujo"
     application = Application.builder().token(TOKEN).build()
     
     # Command handlers
