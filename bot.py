@@ -671,12 +671,20 @@ async def check_email_deposits(context: ContextTypes.DEFAULT_TYPE):
 # --- CHẠY BOT ---
 def main():
     TOKEN = "8627628503:AAFm4RPVqu43EwHuu2Rmx8yvCFaUDPIdujo"
+    
+    # Sử dụng Builder để khởi tạo mặc định đầy đủ các thành phần hệ thống
     application = Application.builder().token(TOKEN).build()
     
-    # Cấu hình tự động quét email mỗi 30 giây để kiểm tra giao dịch
+    # Kiểm tra an toàn trước khi gọi job_queue tránh lỗi 'NoneType'
     job_queue = application.job_queue
-    job_queue.run_repeating(check_email_deposits, interval=30, first=10)
+    if job_queue is not None:
+        # Cấu hình tự động quét email mỗi 30 giây để kiểm tra giao dịch
+        job_queue.run_repeating(check_email_deposits, interval=30, first=10)
+        logging.info("Tác vụ chạy ngầm quét Email đã được kích hoạt thành công!")
+    else:
+        logging.error("Hệ thống chưa thể khởi tạo JobQueue. Vui lòng kiểm tra lại gói cài đặt 'python-telegram-bot[job-queue]'.")
     
+    # Đăng ký các bộ xử lý lệnh (Handlers)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("baotri", cmd_baotri))
     application.add_handler(CommandHandler("tong", cmd_tong))
@@ -688,7 +696,7 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    logging.info("Bot đang chạy kèm tính năng tự động quét Email...")
+    logging.info("Bot đang kết nối dịch vụ...")
     application.run_polling()
 
 if __name__ == "__main__":
