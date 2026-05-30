@@ -2,43 +2,104 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mini App Nhập Thông Tin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Telegram Mini App</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { background: #1a1a1a; color: #ffffff; font-family: sans-serif; padding: 20px; text-align: center; }
-        .box { border: 1px solid #ffd700; padding: 20px; border-radius: 10px; background: #2a2a2a; box-shadow: 0 0 10px #ffd700; }
-        input { width: 90%; padding: 12px; margin: 15px 0; border-radius: 5px; border: 1px solid #555; background: #333; color: #fff; font-size: 16px; box-sizing: border-box; }
-        button { width: 90%; padding: 12px; border: none; border-radius: 5px; background: linear-gradient(135deg, #ffd700, #b8860b); color: #000; font-weight: bold; cursor: pointer; font-size: 16px; }
+        /* CSS căn bản tối ưu cho giao diện điện thoại */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--tg-theme-bg-color, #ffffff); /* Tự động lấy màu nền của Telegram */
+            color: var(--tg-theme-text-color, #222222);       /* Tự động lấy màu chữ của Telegram */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            text-align: center;
+        }
+
+        .container {
+            padding: 20px;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .user-card {
+            background-color: var(--tg-theme-secondary-bg-color, #f4f4f5);
+            border-radius: 12px;
+            padding: 15px;
+            margin-top: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        button {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin-top: 20px;
+            border: none;
+            border-radius: 8px;
+            background-color: var(--tg-theme-button-color, #2481cc); /* Màu nút mặc định của Telegram */
+            color: var(--tg-theme-button-text-color, #ffffff);
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button:active {
+            opacity: 0.8;
+        }
     </style>
 </head>
 <body>
-    <div class="box">
-        <h3 style="color: #ffd700; margin-top: 0;">🛍️ NHẬP THÔNG TIN MUA HÀNG</h3>
-        <p id="prod-display">Đang tải sản phẩm...</p>
-        <input type="text" id="acc-input" placeholder="Nhập tên tài khoản hoặc thông tin log...">
-        <button id="submit-btn">XÁC NHẬN GỬI ĐƠN</button>
+
+    <div class="container">
+        <h1>Code Tech Mini App</h1>
+        <p>Chào mừng bạn đã đến với giao diện Web App!</p>
+
+        <div class="user-card" id="user-info">
+            <p>Đang tải dữ liệu tài khoản...</p>
+        </div>
+
+        <button id="main-btn" onclick="sendDataBack()">Gửi dữ liệu về Bot</button>
+        <button id="close-btn" onclick="closeApp()" style="background-color: #e53e3e; color: white; margin-top: 10px;">Đóng Ứng Dụng</button>
     </div>
 
     <script>
+        // Khởi tạo đối tượng Telegram Web App
         const tg = window.Telegram.WebApp;
-        tg.expand(); // Mở rộng ứng dụng lên toàn màn hình công việc
 
-        // Lấy tham số sản phẩm truyền từ Bot qua URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const prod = urlParams.get('prod') || 'Sản phẩm';
-        document.getElementById('prod-display').innerText = "Đơn hàng: " + prod.toUpperCase();
+        // Mở rộng ứng dụng ra toàn màn hình điện thoại
+        tg.expand();
 
-        document.getElementById('submit-btn').addEventListener('click', () => {
-            const text = document.getElementById('acc-input').value.trim();
-            if (!text) {
-                alert('Vui lòng nhập thông tin trước khi xác nhận!');
-                return;
-            }
-            // Gửi dữ liệu dạng JSON về cho Bot Telegram xử lý
-            tg.sendData(JSON.stringify({ account_name: text }));
-            tg.close(); // Đóng Mini App
-        });
+        // Lấy thông tin user từ Telegram dữ liệu khởi tạo
+        const user = tg.initDataUnsafe?.user;
+
+        const userInfoDiv = document.getElementById('user-info');
+        if (user) {
+            userInfoDiv.innerHTML = `
+                <p><strong>Xin chào:</strong> ${user.first_name} ${user.last_name || ''}</p>
+                <p><strong>Username:</strong> @${user.username || 'Không có'}</p>
+                <p><strong>ID:</strong> <code>${user.id}</code></p>
+            `;
+        } else {
+            userInfoDiv.innerHTML = `<p style="color: red;">Không thể tải thông tin (Có thể bạn không mở từ Telegram).</p>`;
+        }
+
+        // Hàm gửi dữ liệu từ Web App ngược lại cho Bot (chỉ hoạt động khi mở dạng KeyboardButton WebApp)
+        function sendDataBack() {
+            const dataStr = JSON.stringify({ action: "click_button", user_id: user?.id });
+            tg.sendData(dataStr); 
+        }
+
+        // Hàm đóng nhanh Web App
+        function closeApp() {
+            tg.close();
+        }
     </script>
 </body>
 </html>
