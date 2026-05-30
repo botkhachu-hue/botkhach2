@@ -3,100 +3,234 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Telegram Mini App</title>
+    <title>Cửa Hàng Mini App</title>
+    <!-- Nhúng SDK của Telegram Web App -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        /* CSS căn bản tối ưu cho giao diện điện thoại */
+        /* CSS căn bản tối ưu giao diện điện thoại nền tối sang trọng */
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
             padding: 0;
-            background-color: var(--tg-theme-bg-color, #ffffff); /* Tự động lấy màu nền của Telegram */
-            color: var(--tg-theme-text-color, #222222);       /* Tự động lấy màu chữ của Telegram */
+            background-color: #1a1a1a;
+            color: #ffffff;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
             min-height: 100vh;
-            text-align: center;
         }
 
         .container {
-            padding: 20px;
-            max-width: 400px;
             width: 90%;
+            max-width: 400px;
+            padding: 20px 0;
         }
 
-        .user-card {
-            background-color: var(--tg-theme-secondary-bg-color, #f4f4f5);
+        /* Phần hiển thị số dư phía trên cùng */
+        .balance-card {
+            background: linear-gradient(135deg, #ffd700, #b8860b);
+            border-radius: 16px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(255, 215, 0, 0.2);
+            margin-bottom: 25px;
+            color: #000000;
+        }
+
+        .balance-title {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 0 0 5px 0;
+            font-weight: bold;
+            opacity: 0.8;
+        }
+
+        .balance-amount {
+            font-size: 28px;
+            font-weight: 800;
+            margin: 0;
+        }
+
+        /* Thông tin User */
+        .user-welcome {
+            font-size: 16px;
+            margin-bottom: 20px;
+            text-align: left;
+            padding-left: 5px;
+            color: #ffd700;
+        }
+
+        /* Danh sách sản phẩm mua hàng */
+        .section-title {
+            font-size: 18px;
+            margin: 0 0 15px 5px;
+            text-align: left;
+            font-weight: bold;
+        }
+
+        .product-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .product-item {
+            background-color: #2a2a2a;
+            border: 1px solid #3d3d3d;
             border-radius: 12px;
             padding: 15px;
-            margin-top: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: transform 0.2s;
         }
 
-        button {
-            display: block;
-            width: 100%;
-            padding: 12px;
-            margin-top: 20px;
+        .product-item:active {
+            transform: scale(0.98);
+        }
+
+        .product-info {
+            text-align: left;
+        }
+
+        .product-name {
+            font-size: 16px;
+            font-weight: bold;
+            margin: 0 0 5px 0;
+        }
+
+        .product-price {
+            font-size: 14px;
+            color: #ffd700;
+            margin: 0;
+            font-weight: 600;
+        }
+
+        /* Nút mua hàng */
+        .buy-btn {
+            background-color: #ffd700;
+            color: #000000;
             border: none;
             border-radius: 8px;
-            background-color: var(--tg-theme-button-color, #2481cc); /* Màu nút mặc định của Telegram */
-            color: var(--tg-theme-button-text-color, #ffffff);
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .buy-btn:active {
+            opacity: 0.8;
+        }
+
+        /* Nút đóng ứng dụng */
+        .close-btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background-color: #e53e3e;
+            color: white;
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
-            transition: opacity 0.2s;
-        }
-
-        button:active {
-            opacity: 0.8;
         }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h1>Code Tech Mini App</h1>
-        <p>Chào mừng bạn đã đến với giao diện Web App!</p>
-
-        <div class="user-card" id="user-info">
-            <p>Đang tải dữ liệu tài khoản...</p>
+        <!-- Khối hiển thị số dư phía trên cùng -->
+        <div class="balance-card">
+            <p class="balance-title">Số Dư Tài Khoản</p>
+            <p class="balance-amount" id="user-balance">0đ</p>
         </div>
 
-        <button id="main-btn" onclick="sendDataBack()">Gửi dữ liệu về Bot</button>
-        <button id="close-btn" onclick="closeApp()" style="background-color: #e53e3e; color: white; margin-top: 10px;">Đóng Ứng Dụng</button>
+        <!-- Lời chào User -->
+        <div class="user-welcome" id="welcome-text">
+            Xin chào, người dùng!
+        </div>
+
+        <p class="section-title">Danh sách sản phẩm</p>
+        
+        <!-- Khối mua hàng -->
+        <div class="product-list">
+            <!-- Sản phẩm 1 -->
+            <div class="product-item">
+                <div class="product-info">
+                    <p class="product-name">Gói Bạc (Silver)</p>
+                    <p class="product-price">50.000đ</p>
+                </div>
+                <button class="buy-btn" onclick="buyProduct('Gói Bạc', 50000)">Mua ngay</button>
+            </div>
+
+            <!-- Sản phẩm 2 -->
+            <div class="product-item">
+                <div class="product-info">
+                    <p class="product-name">Gói Vàng (Gold)</p>
+                    <p class="product-price">100.000đ</p>
+                </div>
+                <button class="buy-btn" onclick="buyProduct('Gói Vàng', 100000)">Mua ngay</button>
+            </div>
+
+            <!-- Sản phẩm 3 -->
+            <div class="product-item">
+                <div class="product-info">
+                    <p class="product-name">Gói Kim Cương (VIP)</p>
+                    <p class="product-price">500.000đ</p>
+                </div>
+                <button class="buy-btn" onclick="buyProduct('Gói Kim Cương', 500000)">Mua ngay</button>
+            </div>
+        </div>
+
+        <!-- Nút đóng nhanh ứng dụng -->
+        <button class="close-btn" onclick="closeApp()">Đóng Ứng Dụng</button>
     </div>
 
     <script>
         // Khởi tạo đối tượng Telegram Web App
         const tg = window.Telegram.WebApp;
-
-        // Mở rộng ứng dụng ra toàn màn hình điện thoại
-        tg.expand();
+        tg.expand(); // Mở rộng tối đa màn hình
 
         // Lấy thông tin user từ Telegram dữ liệu khởi tạo
         const user = tg.initDataUnsafe?.user;
 
-        const userInfoDiv = document.getElementById('user-info');
+        // Cập nhật tên hiển thị của user
         if (user) {
-            userInfoDiv.innerHTML = `
-                <p><strong>Xin chào:</strong> ${user.first_name} ${user.last_name || ''}</p>
-                <p><strong>Username:</strong> @${user.username || 'Không có'}</p>
-                <p><strong>ID:</strong> <code>${user.id}</code></p>
-            `;
-        } else {
-            userInfoDiv.innerHTML = `<p style="color: red;">Không thể tải thông tin (Có thể bạn không mở từ Telegram).</p>`;
+            document.getElementById('welcome-text').innerText = `Xin chào: ${user.first_name} ${user.last_name || ''}`;
         }
 
-        // Hàm gửi dữ liệu từ Web App ngược lại cho Bot (chỉ hoạt động khi mở dạng KeyboardButton WebApp)
-        function sendDataBack() {
-            const dataStr = JSON.stringify({ action: "click_button", user_id: user?.id });
-            tg.sendData(dataStr); 
+        /**
+         * Giả lập lấy dữ liệu số dư.
+         * Để lấy số dư thực tế từ cơ sở dữ liệu (MySQL), bạn có thể truyền số dư từ bot.py 
+         * qua URL khi mở WebApp (Ví dụ: https://.../?balance=50000) rồi dùng JS để đọc.
+         */
+        const urlParams = new URLSearchParams(window.location.search);
+        const balanceParam = urlParams.get('balance') || "150.000"; // Mặc định hiển thị nếu không truyền
+        document.getElementById('user-balance').innerText = balanceParam + "đ";
+
+        // Hàm xử lý khi nhấn nút "Mua ngay"
+        function buyProduct(prodName, prodPrice) {
+            // Xác nhận hành động mua hàng bằng hộp thoại Telegram
+            tg.showConfirm(`Bạn có chắc chắn muốn mua ${prodName} với giá ${prodPrice.toLocaleString('vi-VN')}đ không?`, function(approved) {
+                if (approved) {
+                    // Tạo chuỗi dữ liệu JSON gửi ngược về cho Bot xử lý trừ tiền và giao hàng
+                    const orderData = JSON.stringify({
+                        action: "buy_product",
+                        user_id: user?.id || 0,
+                        product_name: prodName,
+                        price: prodPrice
+                    });
+                    
+                    // Gửi dữ liệu về bot và đóng app
+                    tg.sendData(orderData);
+                    tg.close();
+                }
+            });
         }
 
-        // Hàm đóng nhanh Web App
+        // Hàm đóng ứng dụng
         function closeApp() {
             tg.close();
         }
