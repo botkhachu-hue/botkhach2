@@ -29,13 +29,12 @@ IMAP_SERVER = "imap.gmail.com"
 # --- CẤU HÌNH ĐƯỜNG LINK WEB APP GITHUB PAGES ---
 WEB_APP_URL = "https://botkhachu-hue.github.io/botkhach2/"
 
-# TRẠNG THÁI GIÁ VÀ DANH SÁCH GAME
+# TRẠNG THÁI GIÁ VÀ DANH SÁCH GAME (ĐÃ XÓA OKKING CŨ KHỎI ĐÂY)
 PRICE = 200000
 PRICE_STR = "200K"
 
 GAMES = [
     {"name": "Fly88", "icon": "🎰", "points": "288-588"},
-    {"name": "Okking", "icon": "👑", "points": "288-588"},
     {"name": "88vv", "icon": "💎", "points": "288-588"},
     {"name": "99ok", "icon": "🔥", "points": "288-588"},
     {"name": "Ww88", "icon": "⚡", "points": "288-588"},
@@ -47,11 +46,11 @@ BANK_REAL_PRICE = 300000
 BANK_REAL_PRICE_STR = "300K"
 BANK_REAL_NAME = "Bank Real Log Được"
 
-# --- CẤU HÌNH SẢN PHẨM MỚI: OKKING '1888' 588K ---
-OKKING_1888_PRICE = 580000
-OKKING_1888_PRICE_STR = "580K"
+# --- CẤU HÌNH DUY NHẤT: OKKING '1888' GIÁ 588K ---
+OKKING_1888_PRICE = 588000
+OKKING_1888_PRICE_STR = "588K"
 OKKING_1888_NAME = "Okking '1888'"
-OKKING_1888_POINTS = "588K"
+OKKING_1888_POINTS = "1888 điểm"
 
 # Xây dựng PRODUCTS
 PRODUCTS = {}
@@ -76,7 +75,7 @@ PRODUCTS["bank_real"] = {
     "price_str": BANK_REAL_PRICE_STR
 }
 
-# Thêm Okking '1888' 588K vào hệ thống dữ liệu PRODUCTS
+# Thêm Okking '1888' (1888 điểm - Giá 588K)
 PRODUCTS["okking_1888"] = {
     "type": "game",
     "game": OKKING_1888_NAME,
@@ -345,13 +344,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 keyboard.append(row)
                 row = []
         
-        # Thêm hàng nút mới gồm Bank Real và Okking '1888' (588K)
+        # Hàng nút chức năng: Bank Real cạnh Okking '1888' (Giá hiển thị 588K chuẩn uy tín)
         keyboard.append([
             InlineKeyboardButton("🏦 BANK REAL", callback_data="select_bank_real"),
             InlineKeyboardButton("👑 Okking '1888' (588K)", callback_data="select_okking_1888")
         ])
         
-        # Thêm nút bấm tích hợp mở trực tiếp Web App Hoàng Gia ở cuối danh sách sản phẩm
+        # Nút mở trực tiếp Web App ở cuối danh sách
         keyboard.append([InlineKeyboardButton("🏆 MỞ WEB APP HOÀNG GIA 🏆", web_app=WebAppInfo(url=WEB_APP_URL))])
         
         msg_header = (
@@ -438,7 +437,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             prod = PRODUCTS["okking_1888"]
             msg = (
                 f"👑 *{prod['game']}*\n▬▬▬▬▬▬▬▬▬▬▬▬\n"
-                f"📌 Bản Code Cao Cấp - {prod['points']} điểm\n📌 Bảo hành 1 đổi 1 cực uy tín nếu lỗi\n"
+                f"📌 Bản Code Cao Cấp - `{prod['points']}`\n📌 Bảo hành 1 đổi 1 cực uy tín nếu lỗi\n"
                 f"📌 Nhập tài khoản game sau khi thanh toán thành công\n▬▬▬▬▬▬▬▬▬▬▬▬\n"
                 f"💰 *Giá:* `{prod['price']:,} VNĐ`\n▬▬▬▬▬▬▬▬▬▬▬▬\n✅ Bấm xác nhận để mua hàng"
             )
@@ -526,7 +525,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         task = asyncio.create_task(refund_user(uid, prod["price"], prod["display"], context))
         timeout_tasks[uid] = task
         
-        # Tùy biến text nhập tên tài khoản cho uy tín theo từng loại game
         input_prompt = f"📝 *Nhập TÊN TÀI KHOẢN KHÁCH {prod['game']}:*" if product_key == "okking_1888" else f"📝 *Nhập TÊN TÀI KHOẢN {prod['game']}:*"
         
         await query.edit_message_text(
@@ -646,7 +644,6 @@ async def check_email_deposits(context: ContextTypes.DEFAULT_TYPE):
         mail.login(EMAIL_USER, EMAIL_PASS)
         mail.select("inbox")
 
-        # Quét các Email CHƯA ĐỌC từ Vietcombank gửi về
         status, messages = mail.search(None, 'UNSEEN FROM "vcbnews@vietcombank.com.vn"')
         if status != "OK":
             return
@@ -673,10 +670,8 @@ async def check_email_deposits(context: ContextTypes.DEFAULT_TYPE):
             if not body:
                 continue
 
-            # Đánh dấu email đã xử lý
             mail.store(num, "+FLAGS", "\\Seen")
 
-            # REGEX LỌC SỐ TIỀN VÀ NỘI DUNG CHUYỂN KHOẢN (ID TELEGRAM) CỦA VCB
             amount_match = re.search(r"\+([0-9,.]+)\s*(?:VND|đ|VND\.)", body, re.IGNORECASE)
             user_id_match = re.search(r"\b([0-9]{8,11})\b", body)
 
@@ -717,10 +712,8 @@ async def check_email_deposits(context: ContextTypes.DEFAULT_TYPE):
 def main():
     TOKEN = "8627628503:AAFm4RPVqu43EwHuu2Rmx8yvCFaUDPIdujo"
     
-    # Khởi tạo mặc định đầy đủ hệ thống để chạy an toàn trên Railway
     application = Application.builder().token(TOKEN).build()
     
-    # Cấu hình kích hoạt tác vụ chạy ngầm của JobQueue
     job_queue = application.job_queue
     if job_queue is not None:
         job_queue.run_repeating(check_email_deposits, interval=30, first=10)
@@ -728,7 +721,6 @@ def main():
     else:
         logging.error("Hệ thống chưa thể khởi tạo JobQueue. Vui lòng kiểm tra lại gói cài đặt 'python-telegram-bot[job-queue]'.")
     
-    # Đăng ký các bộ xử lý lệnh (Handlers)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("baotri", cmd_baotri))
     application.add_handler(CommandHandler("tong", cmd_tong))
