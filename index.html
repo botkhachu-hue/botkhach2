@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mini App Nhập Thông Tin</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { background: #1a1a1a; color: #ffffff; font-family: sans-serif; padding: 20px; text-align: center; }
+        .box { border: 1px solid #ffd700; padding: 20px; border-radius: 10px; background: #2a2a2a; box-shadow: 0 0 10px #ffd700; }
+        input { width: 90%; padding: 12px; margin: 15px 0; border-radius: 5px; border: 1px solid #555; background: #333; color: #fff; font-size: 16px; box-sizing: border-box; }
+        button { width: 90%; padding: 12px; border: none; border-radius: 5px; background: linear-gradient(135deg, #ffd700, #b8860b); color: #000; font-weight: bold; cursor: pointer; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h3 style="color: #ffd700; margin-top: 0;">🛍️ NHẬP THÔNG TIN MUA HÀNG</h3>
+        <p id="prod-display">Đang tải sản phẩm...</p>
+        <input type="text" id="acc-input" placeholder="Nhập tên tài khoản hoặc thông tin log...">
+        <button id="submit-btn">XÁC NHẬN GỬI ĐƠN</button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand(); // Mở rộng ứng dụng lên toàn màn hình công việc
+
+        // Lấy tham số sản phẩm truyền từ Bot qua URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const prod = urlParams.get('prod') || 'Sản phẩm';
+        document.getElementById('prod-display').innerText = "Đơn hàng: " + prod.toUpperCase();
+
+        document.getElementById('submit-btn').addEventListener('click', () => {
+            const text = document.getElementById('acc-input').value.trim();
+            if (!text) {
+                alert('Vui lòng nhập thông tin trước khi xác nhận!');
+                return;
+            }
+            // Gửi dữ liệu dạng JSON về cho Bot Telegram xử lý
+            tg.sendData(JSON.stringify({ account_name: text }));
+            tg.close(); // Đóng Mini App
+        });
+    </script>
+</body>
+</html>
