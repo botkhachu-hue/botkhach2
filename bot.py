@@ -4,7 +4,7 @@ import os
 import asyncio
 import random
 from datetime import datetime
-from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, CallbackQueryHandler, filters
 import sys
 import imaplib
@@ -26,11 +26,13 @@ EMAIL_USER = "tienphongtx@gmail.com"
 EMAIL_PASS = "ykbphysfymmjjtlw"
 IMAP_SERVER = "imap.gmail.com"
 
-# Giá chung 200K cho tất cả game
+# --- CẤU HÌNH ĐƯỜNG LINK WEB APP GITHUB PAGES ---
+WEB_APP_URL = "https://botkhachu-hue.github.io/botkhach2/"
+
+# TRẠNG THÁI GIÁ VÀ DANH SÁCH GAME
 PRICE = 200000
 PRICE_STR = "200K"
 
-# Danh sách game - mỗi game có 2 mức điểm (288-588)
 GAMES = [
     {"name": "Fly88", "icon": "🎰", "points": "288-588"},
     {"name": "Okking", "icon": "👑", "points": "288-588"},
@@ -274,7 +276,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # MENU CHÍNH
     if text == "💳 NẠP TIỀN":
-        # Cập nhật QR và Thông tin sang Vietcombank
         qr_url = f"https://img.vietqr.io/image/VCB-1068030340-print.jpg?addInfo={user_id}&accountName=BAN%20TIEN%20PHONG"
         msg = (
             "🏦 *HỆ THỐNG NẠP TIỀN TỰ ĐỘNG*\n▬▬▬▬▬▬▬▬▬▬▬▬\n"
@@ -328,13 +329,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 row = []
         keyboard.append([InlineKeyboardButton("🏦 BANK REAL", callback_data="select_bank_real")])
         
+        # Thêm nút bấm tích hợp mở trực tiếp Web App Hoàng Gia ở cuối danh sách sản phẩm
+        keyboard.append([InlineKeyboardButton("🏆 MỞ WEB APP HOÀNG GIA 🏆", web_app=WebAppInfo(url=WEB_APP_URL))])
+        
         msg_header = (
             "🛍️ *CỬA HÀNG CODE UY TÍN*\n"
             "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
             "✅ Vui lòng đọc kỹ mô tả trước khi mua\n"
             "✅ Giá đã bao gồm bảo hành 24/7\n"
             "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-            "👇 *Chọn sản phẩm bên dưới:*"
+            "👇 *Chọn sản phẩm bên dưới hoặc nhấn nút để mở Web App:*"
         )
         await update.message.reply_text(msg_header, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -438,6 +442,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 keyboard.append(row)
                 row = []
         keyboard.append([InlineKeyboardButton("🏦 BANK REAL", callback_data="select_bank_real")])
+        
+        # Thêm nút bấm tích hợp mở Web App khi quay lại cửa hàng
+        keyboard.append([InlineKeyboardButton("🏆 MỞ WEB APP HOÀNG GIA 🏆", web_app=WebAppInfo(url=WEB_APP_URL))])
+        
         msg_header = (
             "🛍️ *CỬA HÀNG CODE UY TÍN*\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
             "👇 *Chọn sản phẩm bên dưới:*"
@@ -630,9 +638,7 @@ async def check_email_deposits(context: ContextTypes.DEFAULT_TYPE):
             mail.store(num, "+FLAGS", "\\Seen")
 
             # REGEX LỌC SỐ TIỀN VÀ NỘI DUNG CHUYỂN KHOẢN (ID TELEGRAM) CỦA VCB
-            # Bắt dạng: +100,000 VND hoặc +50.000 VND hoặc +200000VND
             amount_match = re.search(r"\+([0-9,.]+)\s*(?:VND|đ|VND\.)", body, re.IGNORECASE)
-            # Bắt ID người dùng (chuỗi số liên tiếp từ 8 đến 11 ký tự)
             user_id_match = re.search(r"\b([0-9]{8,11})\b", body)
 
             if amount_match and user_id_match:
@@ -672,13 +678,12 @@ async def check_email_deposits(context: ContextTypes.DEFAULT_TYPE):
 def main():
     TOKEN = "8627628503:AAFm4RPVqu43EwHuu2Rmx8yvCFaUDPIdujo"
     
-    # Sử dụng Builder để khởi tạo mặc định đầy đủ các thành phần hệ thống
+    # Khởi tạo mặc định đầy đủ hệ thống để chạy an toàn trên Railway
     application = Application.builder().token(TOKEN).build()
     
-    # Kiểm tra an toàn trước khi gọi job_queue tránh lỗi 'NoneType'
+    # Cấu hình kích hoạt tác vụ chạy ngầm của JobQueue
     job_queue = application.job_queue
     if job_queue is not None:
-        # Cấu hình tự động quét email mỗi 30 giây để kiểm tra giao dịch
         job_queue.run_repeating(check_email_deposits, interval=30, first=10)
         logging.info("Tác vụ chạy ngầm quét Email đã được kích hoạt thành công!")
     else:
