@@ -47,6 +47,12 @@ BANK_REAL_PRICE = 300000
 BANK_REAL_PRICE_STR = "300K"
 BANK_REAL_NAME = "Bank Real Log Được"
 
+# --- CẤU HÌNH SẢN PHẨM MỚI: OKKING '1888' 588K ---
+OKKING_1888_PRICE = 580000
+OKKING_1888_PRICE_STR = "580K"
+OKKING_1888_NAME = "Okking '1888'"
+OKKING_1888_POINTS = "588K"
+
 # Xây dựng PRODUCTS
 PRODUCTS = {}
 for game in GAMES:
@@ -68,6 +74,17 @@ PRODUCTS["bank_real"] = {
     "display": f"🏦 {BANK_REAL_NAME}",
     "price": BANK_REAL_PRICE,
     "price_str": BANK_REAL_PRICE_STR
+}
+
+# Thêm Okking '1888' 588K vào hệ thống dữ liệu PRODUCTS
+PRODUCTS["okking_1888"] = {
+    "type": "game",
+    "game": OKKING_1888_NAME,
+    "icon": "👑",
+    "points": OKKING_1888_POINTS,
+    "display": f"👑 {OKKING_1888_NAME} ({OKKING_1888_POINTS})",
+    "price": OKKING_1888_PRICE,
+    "price_str": OKKING_1888_PRICE_STR
 }
 
 # Khởi tạo hoặc đọc dữ liệu từ file JSON
@@ -327,7 +344,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if len(row) == 2 or i == len(GAMES) - 1:
                 keyboard.append(row)
                 row = []
-        keyboard.append([InlineKeyboardButton("🏦 BANK REAL", callback_data="select_bank_real")])
+        
+        # Thêm hàng nút mới gồm Bank Real và Okking '1888' (588K)
+        keyboard.append([
+            InlineKeyboardButton("🏦 BANK REAL", callback_data="select_bank_real"),
+            InlineKeyboardButton("👑 Okking '1888' (588K)", callback_data="select_okking_1888")
+        ])
         
         # Thêm nút bấm tích hợp mở trực tiếp Web App Hoàng Gia ở cuối danh sách sản phẩm
         keyboard.append([InlineKeyboardButton("🏆 MỞ WEB APP HOÀNG GIA 🏆", web_app=WebAppInfo(url=WEB_APP_URL))])
@@ -412,6 +434,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📌 Log Bank Real chất lượng cao\n📌 Cập nhật liên tục\n📌 Bảo hành 24/7\n▬▬▬▬▬▬▬▬▬▬▬▬\n"
                 f"💰 *Giá:* `{prod['price']:,} VNĐ`\n▬▬▬▬▬▬▬▬▬▬▬▬\n✅ Bấm xác nhận để mua hàng"
             )
+        elif product_key == "okking_1888":
+            prod = PRODUCTS["okking_1888"]
+            msg = (
+                f"👑 *{prod['game']}*\n▬▬▬▬▬▬▬▬▬▬▬▬\n"
+                f"📌 Bản Code Cao Cấp - {prod['points']} điểm\n📌 Bảo hành 1 đổi 1 cực uy tín nếu lỗi\n"
+                f"📌 Nhập tài khoản game sau khi thanh toán thành công\n▬▬▬▬▬▬▬▬▬▬▬▬\n"
+                f"💰 *Giá:* `{prod['price']:,} VNĐ`\n▬▬▬▬▬▬▬▬▬▬▬▬\n✅ Bấm xác nhận để mua hàng"
+            )
         else:
             prod = PRODUCTS.get(product_key)
             if not prod:
@@ -441,7 +471,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if len(row) == 2 or i == len(GAMES) - 1:
                 keyboard.append(row)
                 row = []
-        keyboard.append([InlineKeyboardButton("🏦 BANK REAL", callback_data="select_bank_real")])
+        
+        # Thêm lại hàng nút Bank Real và Okking '1888'
+        keyboard.append([
+            InlineKeyboardButton("🏦 BANK REAL", callback_data="select_bank_real"),
+            InlineKeyboardButton("👑 Okking '1888' (588K)", callback_data="select_okking_1888")
+        ])
         
         # Thêm nút bấm tích hợp mở Web App khi quay lại cửa hàng
         keyboard.append([InlineKeyboardButton("🏆 MỞ WEB APP HOÀNG GIA 🏆", web_app=WebAppInfo(url=WEB_APP_URL))])
@@ -474,7 +509,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Xác nhận mua game
+    # Xác nhận mua game (Bao gồm cả các game thường và Okking '1888')
     if data.startswith("confirm_") and data != "confirm_bank_real":
         product_key = data.replace("confirm_", "")
         prod = PRODUCTS.get(product_key)
@@ -490,11 +525,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_waiting_for_account[uid] = {"display": prod["display"], "price": prod["price"]}
         task = asyncio.create_task(refund_user(uid, prod["price"], prod["display"], context))
         timeout_tasks[uid] = task
+        
+        # Tùy biến text nhập tên tài khoản cho uy tín theo từng loại game
+        input_prompt = f"📝 *Nhập TÊN TÀI KHOẢN KHÁCH {prod['game']}:*" if product_key == "okking_1888" else f"📝 *Nhập TÊN TÀI KHOẢN {prod['game']}:*"
+        
         await query.edit_message_text(
             f"✅ *ĐÃ TRỪ TIỀN!*\n▬▬▬▬▬▬▬▬▬▬▬▬\n"
             f"🎮 {prod['display']}\n💰 Đã trừ: `{prod['price']:,} VNĐ`\n"
             f"💳 Dư: `{u_info['balance']:,} VNĐ`\n▬▬▬▬▬▬▬▬▬▬▬▬\n"
-            f"📝 *Nhập TÊN TÀI KHOẢN {prod['game']}:*\n⏰ Có 5 phút - /cancel để hủy",
+            f"{input_prompt}\n⏰ Có 5 phút - /cancel để hủy",
             parse_mode="Markdown"
         )
         return
